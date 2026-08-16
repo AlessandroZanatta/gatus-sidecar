@@ -1,0 +1,42 @@
+# release-please derives the version and changelog from commit messages. With
+# squash merging, the merged commit message is the pull request title, so the
+# title is what has to follow Conventional Commits.
+name: PR title
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Conventional commit title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Kept in step with the changelog sections in .release-please-config.json.
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            deps
+            build
+            ci
+            test
+            chore
+            style
+          requireScope: false
+          subjectPattern: ^[a-z].*[^.]$
+          subjectPatternError: |
+            The subject "{subject}" should start lowercase and not end with a period.

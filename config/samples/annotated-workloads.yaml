@@ -1,0 +1,149 @@
+# Worked examples covering each way a workload can describe its monitoring.
+# In practice these annotations go on the Services the applications already ship.
+---
+# A namespace group is inherited by everything inside it, so the display name is
+# written once instead of on each service in that namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: storefront
+  annotations:
+    gatus.io/group: Online Shop
+---
+# The ordinary case: opt in and take the defaults. Name and group are derived
+# from the object and its namespace, the URL from the single exposed port, and
+# default-http applies through defaultFor.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: storefront
+  annotations:
+    gatus.io/enabled: "true"
+spec:
+  ports:
+    - port: 8080
+---
+# A TCP check. The scheme is what selects default-tcp, so the conditions and
+# alerts come along without naming a template.
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: storefront
+  annotations:
+    gatus.io/enabled: "true"
+    gatus.io/scheme: tcp
+spec:
+  ports:
+    - port: 5432
+---
+# An endpoint that belongs at the top level of the status page. An empty group
+# means "none", as opposed to an absent annotation which means "derive one".
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane
+  namespace: platform
+  annotations:
+    gatus.io/enabled: "true"
+    gatus.io/group: ""
+    gatus.io/name: Control plane
+spec:
+  ports:
+    - port: 80
+---
+# Overriding one field of the template. Lists replace rather than append, so
+# these two conditions are the whole set, not additions to the template's.
+apiVersion: v1
+kind: Service
+metadata:
+  name: portal
+  namespace: platform
+  annotations:
+    gatus.io/enabled: "true"
+    # This app sits behind forward auth and returns 4xx without the headers.
+    gatus.io/endpoint: |
+      conditions:
+        - "[STATUS] > 400"
+        - "[STATUS] < 500"
+spec:
+  ports:
+    - port: 80
+---
+# One Service worth checking twice. Each item may override anything the object
+# set; what it leaves out is inherited.
+apiVersion: v1
+kind: Service
+metadata:
+  name: object-store
+  namespace: platform
+  annotations:
+    gatus.io/enabled: "true"
+    gatus.io/endpoints: |
+      - name: Object store
+        port: 9000
+        path: /health
+      - name: Object store console
+        port: 9001
+spec:
+  ports:
+    - name: api
+      port: 9000
+    - name: console
+      port: 9001
+---
+# A multi-port Service must say which port to check; guessing would silently
+# monitor the wrong thing.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: storefront
+  annotations:
+    gatus.io/enabled: "true"
+    gatus.io/port: http
+    gatus.io/path: /healthz
+spec:
+  ports:
+    - name: metrics
+      port: 9090
+    - name: http
+      port: 3000
+---
+# Checking something outside the cluster. An explicit URL bypasses all
+# derivation, and https still selects default-http through defaultFor.
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-connectivity
+  namespace: platform
+  annotations:
+    gatus.io/enabled: "true"
+    gatus.io/group: ""
+    gatus.io/name: External connectivity check
+    gatus.io/url: https://example.org
+    gatus.io/endpoint: |
+      interval: 5m
+spec:
+  ports:
+    - port: 443
+---
+# An IngressRoute yields two endpoints: the public address from the Host
+# matcher, and the in-cluster address of the backing Service. When they
+# disagree, the difference is the useful signal.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: web
+  namespace: storefront
+  annotations:
+    gatus.io/enabled: "true"
+spec:
+  entryPoints: [websecure]
+  routes:
+    - kind: Rule
+      match: Host(`shop.example.com`)
+      services:
+        - name: web
+          port: 8080

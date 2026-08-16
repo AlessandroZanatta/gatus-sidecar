@@ -1,0 +1,167 @@
+# Gatus with the sidecar alongside it.
+#
+# The two containers share an emptyDir at /config. The sidecar renders into it
+# and Gatus hot-reloads what appears there, so no restart is involved and each
+# replica renders its own copy: there is nothing to coordinate between them.
+#
+# The base ConfigMap holds only what is genuinely a singleton (security, storage,
+# alerting providers, ui, connectivity). Endpoints come from the cluster.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatus-base-conf
+  namespace: gatus
+data:
+  config.yaml: |
+    security:
+      oidc:
+        issuer-url: "https://auth.example.com"
+        redirect-url: "https://status.example.com/authorization-code/callback"
+        client-id: "${OIDC_CLIENT_ID}"
+        client-secret: "${OIDC_CLIENT_SECRET}"
+        scopes: [openid, profile, email]
+
+    storage:
+      type: postgres
+      path: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable"
+
+    alerting:
+      telegram:
+        token: "${TELEGRAM_TOKEN}"
+        id: "${TELEGRAM_PRIMARY_ID}"
+        default-alert:
+          send-on-resolved: true
+          failure-threshold: 3
+          success-threshold: 3
+
+    ui:
+      default-sort-by: group
+
+    connectivity:
+      checker:
+        target: 1.1.1.1:53
+        interval: 1m
+
+    announcements: []
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gatus
+  namespace: gatus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gatus
+  template:
+    metadata:
+      labels:
+        app: gatus
+    spec:
+      serviceAccountName: gatus-sidecar
+      securityContext:
+        # Both containers run as the same uid so the file the sidecar writes is
+        # readable by Gatus without any group juggling.
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: gatus
+          image: twinproduction/gatus:latest
+          args: ["--config=/config/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: gatus-secrets
+          volumeMounts:
+            - name: rendered-config
+              mountPath: /config
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+        - name: sidecar
+          image: ghcr.io/alessandrozanatta/gatus-sidecar:dev
+          args:
+            - --base-config=/base/config.yaml
+            - --output=/config/config.yaml
+            - --service-discovery=opt-in
+            - --ingressroute-discovery=opt-in
+            - --metrics-bind-address=:8081
+            - --health-probe-bind-address=:8082
+          ports:
+            - name: metrics
+              containerPort: 8081
+            - name: probes
+              containerPort: 8082
+          volumeMounts:
+            - name: rendered-config
+              mountPath: /config
+            - name: base-config
+              mountPath: /base
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+          # Not ready until a configuration has actually been written, so a
+          # rollout does not retire the old pod while the new one has nothing
+          # for Gatus to read.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+
+      volumes:
+        # The rendered config is per-pod state, not shared: an emptyDir is
+        # exactly right, and it disappears with the pod.
+        - name: rendered-config
+          emptyDir: {}
+        - name: base-config
+          configMap:
+            name: gatus-base-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gatus
+  namespace: gatus
+spec:
+  selector:
+    app: gatus
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -1,0 +1,15 @@
+# The sidecar reads Services, Namespaces and IngressRoutes across the whole
+# cluster, so the binding has to be cluster-scoped. Its only write is to the
+# status of its own CRD.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gatus-sidecar
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: gatus-sidecar
+subjects:
+  - kind: ServiceAccount
+    name: gatus-sidecar
+    namespace: gatus
