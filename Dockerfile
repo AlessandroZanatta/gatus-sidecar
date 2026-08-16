@@ -2,7 +2,7 @@
 # never the platform being built for. Go cross-compiles, so emulating an arm64
 # toolchain under QEMU only to run a compiler that can already target arm64
 # costs minutes per build and buys nothing.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:70b46548e42db77e0966aaf3619fd068734dc6c77584d526b91126504fd95816 AS build
 
 # Root certificates are the one thing the binary cannot supply itself. In-cluster
 # it uses the service account CA bundle, but running against a kubeconfig whose
