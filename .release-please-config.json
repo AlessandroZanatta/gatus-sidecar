@@ -6,6 +6,7 @@
       "package-name": "gatus-sidecar",
       "include-component-in-tag": false,
       "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.1.0",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
       "changelog-sections": [
