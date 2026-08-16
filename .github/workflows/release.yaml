@@ -91,13 +91,7 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-      - name: Attach manifests to the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.release-please.outputs.tag }}
-        run: |
-          # The CRD is what a user has to apply before the sidecar starts, so
-          # ship it as a release asset rather than making them clone the repo.
-          gh release upload "$TAG" \
-            config/crd/bases/gatus.kalexlab.xyz_endpointtemplates.yaml \
-            --clobber
+      # The CRD is deliberately not attached as a release asset. The tag already
+      # makes it fetchable at an exact version straight from the repository, and
+      # uploading an asset would need contents: write on a job that pushes images
+      # and holds an id-token.
