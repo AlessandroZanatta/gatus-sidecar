@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 
@@ -38,8 +39,6 @@ func ParseMode(v string) (Mode, error) {
 
 // Options configures how objects are turned into endpoints.
 type Options struct {
-	Keys Keys
-
 	// ServiceMode and IngressRouteMode are independent so, for example, Services
 	// can be swept automatically while IngressRoutes stay opt-in.
 	ServiceMode      Mode
@@ -63,7 +62,6 @@ type Options struct {
 // Defaults returns Options matching the documented flag defaults.
 func Defaults() Options {
 	return Options{
-		Keys:               NewKeys(DefaultAnnotationPrefix),
 		ServiceMode:        ModeOptIn,
 		IngressRouteMode:   ModeOptIn,
 		GroupFromNamespace: true,
@@ -74,20 +72,44 @@ func Defaults() Options {
 }
 
 // enabled reports whether an object opts in under the given mode.
-func enabled(k Keys, mode Mode, annotations map[string]string) bool {
+func enabled(mode Mode, annotations map[string]string) bool {
 	switch mode {
 	case ModeDisabled:
 		return false
 	case ModeAuto:
-		v, ok := k.Get(annotations, AnnEnabled)
+		v, ok := Annotation(annotations, AnnEnabled)
 		if !ok {
 			return true
 		}
 		return !isFalse(v)
 	default: // ModeOptIn
-		v, ok := k.Get(annotations, AnnEnabled)
+		v, ok := Annotation(annotations, AnnEnabled)
 		return ok && isTrue(v)
 	}
+}
+
+// excluded reports whether an object opted itself out by naming itself in the
+// exclude annotation.
+//
+// The annotation lists names rather than being a plain boolean because
+// annotations are routinely propagated to a whole family of objects at once, by
+// an operator or a chart, leaving no way to opt one member out at the source. A
+// list every copy carries lets a copy suppress itself: each object matches only
+// the entries naming it and ignores the rest.
+//
+// Patterns are path.Match globs, so "db-replicas" is an exact name and
+// "*-headless" is a naming convention. An unparseable pattern matches nothing.
+func excluded(name string, annotations map[string]string) bool {
+	v, ok := Annotation(annotations, AnnExclude)
+	if !ok {
+		return false
+	}
+	for _, pattern := range splitList(v) {
+		if matched, err := path.Match(pattern, name); err == nil && matched {
+			return true
+		}
+	}
+	return false
 }
 
 func isTrue(v string) bool {
@@ -106,14 +128,20 @@ func isFalse(v string) bool {
 // error means it asked to be monitored but could not be understood, which is
 // worth surfacing rather than silently dropping.
 func (o Options) FromService(svc *corev1.Service, nsGroup string) ([]config.Endpoint, error) {
-	if !enabled(o.Keys, o.ServiceMode, svc.Annotations) {
+	if !enabled(o.ServiceMode, svc.Annotations) {
+		return nil, nil
+	}
+	// Exclusion wins over enabled: the annotation that turns a whole family of
+	// Services on is the same one every member inherits, so the only way to drop
+	// one is to override the decision here.
+	if excluded(svc.Name, svc.Annotations) {
 		return nil, nil
 	}
 	if svc.Spec.Type == corev1.ServiceTypeExternalName {
-		return nil, fmt.Errorf("ExternalName services have no cluster IP to check; set %s explicitly", o.Keys.Key(AnnURL))
+		return nil, fmt.Errorf("ExternalName services have no cluster IP to check; set %s explicitly", Key(AnnURL))
 	}
 
-	specs, err := specsFromAnnotations(o.Keys, svc.Annotations)
+	specs, err := specsFromAnnotations(svc.Annotations)
 	if err != nil {
 		return nil, err
 	}

@@ -51,7 +51,6 @@ type options struct {
 	serviceMode      string
 	ingressRouteMode string
 	namespaceSel     string
-	annotationPrefix string
 	externalSuffix   string
 	clusterDomain    string
 	defaultScheme    string
@@ -73,8 +72,6 @@ func main() {
 		"How IngressRoutes are picked up: opt-in, auto or disabled.")
 	flag.StringVar(&o.namespaceSel, "namespace-selector", "",
 		"Only watch namespaces matching this label selector. Empty means all namespaces.")
-	flag.StringVar(&o.annotationPrefix, "annotation-prefix", discovery.DefaultAnnotationPrefix,
-		"Prefix for the annotations this sidecar reads.")
 	flag.StringVar(&o.externalSuffix, "external-suffix", " (external)",
 		"Suffix for the externally-reachable endpoint generated from an IngressRoute.")
 	flag.StringVar(&o.clusterDomain, "cluster-domain", "cluster.local",
@@ -150,7 +147,6 @@ func run(o options) error {
 	}
 
 	discoveryOpts := discovery.Options{
-		Keys:               discovery.NewKeys(o.annotationPrefix),
 		ServiceMode:        serviceMode,
 		IngressRouteMode:   ingressRouteMode,
 		GroupFromNamespace: o.groupFromNS,
@@ -235,7 +231,7 @@ func run(o options) error {
 		"baseConfig", o.baseConfig,
 		"serviceDiscovery", serviceMode,
 		"ingressRouteDiscovery", ingressRouteMode,
-		"annotationPrefix", discoveryOpts.Keys.Prefix())
+		"annotationPrefix", discovery.AnnotationPrefix)
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		return fmt.Errorf("manager exited: %w", err)

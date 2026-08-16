@@ -25,7 +25,7 @@ func port(name string, n int32) corev1.ServicePort {
 func ann(pairs ...string) map[string]string {
 	out := map[string]string{}
 	for i := 0; i < len(pairs); i += 2 {
-		out[DefaultAnnotationPrefix+pairs[i]] = pairs[i+1]
+		out[AnnotationPrefix+pairs[i]] = pairs[i+1]
 	}
 	return out
 }
@@ -108,6 +108,88 @@ func TestFromServiceDiscoveryModes(t *testing.T) {
 	}
 }
 
+func TestFromServiceExclude(t *testing.T) {
+	tests := []struct {
+		name    string
+		svcName string
+		exclude string
+		want    bool // want the service monitored
+	}{
+		{"no exclude annotation", "db-primary", "", true},
+		{"names another service", "db-primary", "db-replicas", true},
+		{"names this service", "db-replicas", "db-replicas", false},
+		{"one entry of a list", "db-replicas", "db-headless,db-replicas,db-extra", false},
+		{"no entry of a list", "db-primary", "db-headless,db-replicas,db-extra", true},
+		{"glob suffix", "db-headless", "*-headless", false},
+		{"glob suffix misses", "db", "*-headless", true},
+		{"bare star excludes everything", "db-primary", "*", false},
+		{"single-character wildcard", "db-1", "db-?", false},
+		{"character class", "db-ro", "db-[rn]o", false},
+		{"whitespace and blanks are ignored", "db-replicas", " , db-replicas , ", false},
+		{"newline separated", "db-replicas", "db-headless\ndb-replicas\n", false},
+		{"unparseable pattern matches nothing", "db-replicas", "db-[replicas", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			o := Defaults()
+
+			annotations := ann("enabled", "true")
+			if tc.exclude != "" {
+				annotations = ann("enabled", "true", "exclude", tc.exclude)
+			}
+
+			got, err := o.FromService(svc("storefront", tc.svcName, annotations, port("postgres", 5432)), "")
+			if err != nil {
+				t.Fatalf("FromService: %v", err)
+			}
+			if monitored := len(got) > 0; monitored != tc.want {
+				t.Errorf("monitored = %v, want %v", monitored, tc.want)
+			}
+		})
+	}
+}
+
+// The exclude annotation is propagated to a whole family of Services at once, so
+// one shared value has to suppress the members it names and leave the rest alone.
+func TestFromServiceExcludeSharedAcrossServices(t *testing.T) {
+	o := Defaults()
+	inherited := ann("enabled", "true", "scheme", "tcp", "exclude", "db-replicas")
+
+	var monitored []string
+	for _, name := range []string{"db-primary", "db-replicas", "db-all"} {
+		got, err := o.FromService(svc("storefront", name, inherited, port("postgres", 5432)), "")
+		if err != nil {
+			t.Fatalf("FromService(%s): %v", name, err)
+		}
+		if len(got) > 0 {
+			monitored = append(monitored, name)
+		}
+	}
+
+	want := []string{"db-primary", "db-all"}
+	if !reflect.DeepEqual(monitored, want) {
+		t.Errorf("monitored = %v, want %v", monitored, want)
+	}
+}
+
+// exclude is a control annotation: it configures discovery and must not reach
+// the rendered Gatus endpoint.
+func TestFromServiceExcludeDoesNotLeakIntoPatch(t *testing.T) {
+	o := Defaults()
+
+	got, err := o.FromService(svc("storefront", "db-primary", ann("enabled", "true", "exclude", "db-replicas"), port("postgres", 5432)), "")
+	if err != nil {
+		t.Fatalf("FromService: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d endpoints, want 1", len(got))
+	}
+	if _, ok := got[0].Patch["exclude"]; ok {
+		t.Errorf("exclude leaked into the endpoint patch: %v", got[0].Patch)
+	}
+}
+
 func TestFromServicePortSelection(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -161,7 +243,7 @@ func TestFromServicePortSelection(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			annotations := ann("enabled", "true")
 			if tc.portAnn != "" {
-				annotations[DefaultAnnotationPrefix+AnnPort] = tc.portAnn
+				annotations[AnnotationPrefix+AnnPort] = tc.portAnn
 			}
 
 			got, err := Defaults().FromService(svc("storefront", "x", annotations, tc.ports...), "")
@@ -370,7 +452,7 @@ func TestFromServiceTemplates(t *testing.T) {
 func TestFromServiceRawPatch(t *testing.T) {
 	// A workload behind forward auth, which returns 4xx without the headers.
 	annotations := ann("enabled", "true", "group", "Platform")
-	annotations[DefaultAnnotationPrefix+AnnEndpoint] = "conditions:\n  - \"[STATUS] > 400\"\n  - \"[STATUS] < 500\"\n"
+	annotations[AnnotationPrefix+AnnEndpoint] = "conditions:\n  - \"[STATUS] > 400\"\n  - \"[STATUS] < 500\"\n"
 
 	got, err := Defaults().FromService(svc("platform", "portal", annotations, port("http", 80)), "")
 	if err != nil {
@@ -389,7 +471,7 @@ func TestFromServiceRawPatch(t *testing.T) {
 func TestFromServiceEndpointsList(t *testing.T) {
 	// One Service exposing both a health port and a console port.
 	annotations := ann("enabled", "true", "group", "Platform")
-	annotations[DefaultAnnotationPrefix+AnnEndpoints] = `
+	annotations[AnnotationPrefix+AnnEndpoints] = `
 - name: Object store
   port: 9000
   path: /health
@@ -435,7 +517,7 @@ func TestFromServiceEndpointsListInheritsShortcuts(t *testing.T) {
 	// deliberately unrelated to the group so inheritance cannot be confused
 	// with the namespace fallback.
 	annotations := ann("enabled", "true", "group", "Platform", "template", "strict")
-	annotations[DefaultAnnotationPrefix+AnnEndpoints] = "- name: A\n  port: 9000\n- name: B\n  port: 9001\n  group: Other\n"
+	annotations[AnnotationPrefix+AnnEndpoints] = "- name: A\n  port: 9000\n- name: B\n  port: 9001\n  group: Other\n"
 
 	got, err := Defaults().FromService(svc("storage", "object-store", annotations, port("a", 9000), port("b", 9001)), "")
 	if err != nil {
@@ -456,7 +538,7 @@ func TestFromServiceEndpointsListInheritsShortcuts(t *testing.T) {
 
 func TestFromServiceEndpointsListItemsOverrideShortcuts(t *testing.T) {
 	annotations := ann("enabled", "true", "name", "Ignored", "port", "9999", "scheme", "tcp")
-	annotations[DefaultAnnotationPrefix+AnnEndpoints] = "- name: Real\n  port: 9000\n"
+	annotations[AnnotationPrefix+AnnEndpoints] = "- name: Real\n  port: 9000\n"
 
 	got, err := Defaults().FromService(svc("platform", "object-store", annotations, port("a", 9000)), "")
 	if err != nil {
@@ -476,8 +558,8 @@ func TestFromServiceEndpointsListItemsOverrideShortcuts(t *testing.T) {
 
 func TestFromServiceEndpointsListInheritsPatchKeyByKey(t *testing.T) {
 	annotations := ann("enabled", "true")
-	annotations[DefaultAnnotationPrefix+AnnEndpoint] = "interval: 1m\nclient:\n  timeout: 10s\n"
-	annotations[DefaultAnnotationPrefix+AnnEndpoints] = "- name: A\n  port: 9000\n- name: B\n  port: 9001\n  interval: 5m\n"
+	annotations[AnnotationPrefix+AnnEndpoint] = "interval: 1m\nclient:\n  timeout: 10s\n"
+	annotations[AnnotationPrefix+AnnEndpoints] = "- name: A\n  port: 9000\n- name: B\n  port: 9001\n  interval: 5m\n"
 
 	got, err := Defaults().FromService(svc("ns", "x", annotations, port("a", 9000), port("b", 9001)), "")
 	if err != nil {
@@ -512,7 +594,7 @@ func TestFromServiceMalformedAnnotations(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			annotations := ann("enabled", "true")
-			annotations[DefaultAnnotationPrefix+tc.suffix] = tc.value
+			annotations[AnnotationPrefix+tc.suffix] = tc.value
 
 			_, err := Defaults().FromService(svc("ns", "x", annotations, port("http", 80)), "")
 			if err == nil {
@@ -575,33 +657,17 @@ func TestParseMode(t *testing.T) {
 	}
 }
 
-func TestNewKeys(t *testing.T) {
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"", "gatus.io/"},
-		{"gatus.io/", "gatus.io/"},
-		{"gatus.io", "gatus.io/"},
-		{"monitoring.example.com/", "monitoring.example.com/"},
-		{"gatus.", "gatus."},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.in, func(t *testing.T) {
-			if got := NewKeys(tc.in).Prefix(); got != tc.want {
-				t.Errorf("NewKeys(%q).Prefix() = %q, want %q", tc.in, got, tc.want)
-			}
-		})
+func TestKey(t *testing.T) {
+	if got, want := Key(AnnGroup), "gatus.kalexlab.xyz/group"; got != want {
+		t.Errorf("Key(%q) = %q, want %q", AnnGroup, got, want)
 	}
 }
 
-func TestKeysGetTrimsWhitespace(t *testing.T) {
-	k := NewKeys("")
+func TestAnnotationTrimsWhitespace(t *testing.T) {
 	// Annotations written as YAML block scalars carry a trailing newline.
-	got, ok := k.Get(map[string]string{"gatus.io/group": "  Storefront\n"}, AnnGroup)
+	got, ok := Annotation(map[string]string{Key(AnnGroup): "  Storefront\n"}, AnnGroup)
 	if !ok || got != "Storefront" {
-		t.Errorf("Get() = %q, %v, want \"Storefront\", true", got, ok)
+		t.Errorf("Annotation() = %q, %v, want \"Storefront\", true", got, ok)
 	}
 }
 

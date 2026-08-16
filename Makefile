@@ -42,7 +42,7 @@ manifests: ## Generate CRD and RBAC manifests.
 
 .PHONY: verify-generated
 verify-generated: generate manifests ## Fail if generated files are out of date.
-	@git diff --exit-code -- api config deploy/rbac/role.yaml \
+	@git diff --exit-code -- api config/crd/bases deploy/rbac/role.yaml \
 		|| { echo "Generated files are stale. Run 'make generate manifests' and commit the result."; exit 1; }
 
 ##@ Checks

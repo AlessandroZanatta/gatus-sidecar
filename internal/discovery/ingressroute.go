@@ -60,11 +60,14 @@ type backendRef struct {
 // any middleware; the internal one isolates the workload itself. When they
 // disagree, the difference is the useful signal.
 func (o Options) FromIngressRoute(obj *unstructured.Unstructured, nsGroup string, resolve ServiceResolver) ([]config.Endpoint, error) {
-	if !enabled(o.Keys, o.IngressRouteMode, obj.GetAnnotations()) {
+	if !enabled(o.IngressRouteMode, obj.GetAnnotations()) {
+		return nil, nil
+	}
+	if excluded(obj.GetName(), obj.GetAnnotations()) {
 		return nil, nil
 	}
 
-	specs, err := specsFromAnnotations(o.Keys, obj.GetAnnotations())
+	specs, err := specsFromAnnotations(obj.GetAnnotations())
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +87,7 @@ func (o Options) FromIngressRoute(obj *unstructured.Unstructured, nsGroup string
 		return o.endpointsFromSpecs(specs, ctx)
 	}
 	// The list-valued endpoints annotation is likewise an explicit description.
-	if _, listed := o.Keys.Raw(obj.GetAnnotations(), AnnEndpoints); listed {
+	if _, listed := rawAnnotation(obj.GetAnnotations(), AnnEndpoints); listed {
 		return o.endpointsFromSpecs(specs, ctx)
 	}
 

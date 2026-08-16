@@ -8,7 +8,7 @@ kind: Namespace
 metadata:
   name: storefront
   annotations:
-    gatus.io/group: Online Shop
+    gatus.kalexlab.xyz/group: Online Shop
 ---
 # The ordinary case: opt in and take the defaults. Name and group are derived
 # from the object and its namespace, the URL from the single exposed port, and
@@ -19,7 +19,7 @@ metadata:
   name: web
   namespace: storefront
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   ports:
     - port: 8080
@@ -32,8 +32,8 @@ metadata:
   name: database
   namespace: storefront
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/scheme: tcp
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/scheme: tcp
 spec:
   ports:
     - port: 5432
@@ -46,9 +46,9 @@ metadata:
   name: control-plane
   namespace: platform
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: ""
-    gatus.io/name: Control plane
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: ""
+    gatus.kalexlab.xyz/name: Control plane
 spec:
   ports:
     - port: 80
@@ -61,9 +61,9 @@ metadata:
   name: portal
   namespace: platform
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
     # This app sits behind forward auth and returns 4xx without the headers.
-    gatus.io/endpoint: |
+    gatus.kalexlab.xyz/endpoint: |
       conditions:
         - "[STATUS] > 400"
         - "[STATUS] < 500"
@@ -79,8 +79,8 @@ metadata:
   name: object-store
   namespace: platform
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/endpoints: |
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/endpoints: |
       - name: Object store
         port: 9000
         path: /health
@@ -101,9 +101,9 @@ metadata:
   name: api
   namespace: storefront
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/port: http
-    gatus.io/path: /healthz
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/port: http
+    gatus.kalexlab.xyz/path: /healthz
 spec:
   ports:
     - name: metrics
@@ -119,11 +119,11 @@ metadata:
   name: external-connectivity
   namespace: platform
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: ""
-    gatus.io/name: External connectivity check
-    gatus.io/url: https://example.org
-    gatus.io/endpoint: |
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: ""
+    gatus.kalexlab.xyz/name: External connectivity check
+    gatus.kalexlab.xyz/url: https://example.org
+    gatus.kalexlab.xyz/endpoint: |
       interval: 5m
 spec:
   ports:
@@ -138,7 +138,7 @@ metadata:
   name: web
   namespace: storefront
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   entryPoints: [websecure]
   routes:
