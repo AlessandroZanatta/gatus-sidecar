@@ -57,7 +57,7 @@ func (r *IngressRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	nsGroup := ""
 	if ns != nil {
-		nsGroup, _ = r.Options.Keys.Get(ns.Annotations, discovery.AnnGroup)
+		nsGroup, _ = discovery.Annotation(ns.Annotations, discovery.AnnGroup)
 	}
 
 	endpoints, err := r.Options.FromIngressRoute(route, nsGroup, r.resolveService(ctx))

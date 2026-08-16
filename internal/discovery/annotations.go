@@ -11,14 +11,13 @@ import (
 	"github.com/AlessandroZanatta/gatus-sidecar/internal/config"
 )
 
-// DefaultAnnotationPrefix is the prefix every annotation this sidecar reads
-// shares. It is configurable so two sidecars can watch one cluster with
-// different opinions without fighting over the same keys.
-const DefaultAnnotationPrefix = "gatus.io/"
+// AnnotationPrefix is the prefix every annotation this sidecar reads shares.
+const AnnotationPrefix = "gatus.kalexlab.xyz/"
 
-// Annotation suffixes, appended to the configured prefix.
+// Annotation suffixes, appended to the prefix.
 const (
 	AnnEnabled       = "enabled"
+	AnnExclude       = "exclude"
 	AnnName          = "name"
 	AnnGroup         = "group"
 	AnnTemplate      = "template"
@@ -31,43 +30,24 @@ const (
 	AnnEndpoints     = "endpoints"
 )
 
-// Keys resolves annotation suffixes against a configurable prefix.
-type Keys struct{ prefix string }
-
-// NewKeys returns the annotation key set for a prefix. An empty prefix falls
-// back to the default, and a prefix missing its trailing separator gets one, so
-// "gatus.io" and "gatus.io/" behave identically.
-func NewKeys(prefix string) Keys {
-	if prefix == "" {
-		prefix = DefaultAnnotationPrefix
-	}
-	if !strings.HasSuffix(prefix, "/") && !strings.HasSuffix(prefix, ".") {
-		prefix += "/"
-	}
-	return Keys{prefix: prefix}
-}
-
-// Prefix returns the resolved prefix, including its trailing separator.
-func (k Keys) Prefix() string { return k.prefix }
-
 // Key returns the full annotation key for a suffix.
-func (k Keys) Key(suffix string) string { return k.prefix + suffix }
+func Key(suffix string) string { return AnnotationPrefix + suffix }
 
-// Get returns the annotation value and whether it was present. Values are
+// Annotation returns the annotation value and whether it was present. Values are
 // trimmed, since annotations written through YAML block scalars routinely carry
 // a trailing newline.
-func (k Keys) Get(annotations map[string]string, suffix string) (string, bool) {
-	v, ok := annotations[k.Key(suffix)]
+func Annotation(annotations map[string]string, suffix string) (string, bool) {
+	v, ok := annotations[Key(suffix)]
 	if !ok {
 		return "", false
 	}
 	return strings.TrimSpace(v), true
 }
 
-// Raw returns an annotation value without trimming, for the YAML-valued
-// annotations where leading indentation is significant.
-func (k Keys) Raw(annotations map[string]string, suffix string) (string, bool) {
-	v, ok := annotations[k.Key(suffix)]
+// rawAnnotation returns an annotation value without trimming, for the
+// YAML-valued annotations where leading indentation is significant.
+func rawAnnotation(annotations map[string]string, suffix string) (string, bool) {
+	v, ok := annotations[Key(suffix)]
 	return v, ok
 }
 
@@ -99,6 +79,7 @@ var controlKeys = map[string]bool{
 	AnnTemplate:      true,
 	AnnTemplateExtra: true,
 	AnnEnabled:       true,
+	AnnExclude:       true,
 }
 
 // identityKeys are consumed into spec fields but are also real Gatus fields, so
@@ -116,20 +97,20 @@ var identityKeys = map[string]bool{
 // overlaid on the object's shortcut annotations. That way a Service can set
 // group and template once and still describe several endpoints, instead of
 // repeating shared settings in every item.
-func specsFromAnnotations(k Keys, annotations map[string]string) ([]spec, error) {
-	base, err := parseShortcuts(k, annotations)
+func specsFromAnnotations(annotations map[string]string) ([]spec, error) {
+	base, err := parseShortcuts(annotations)
 	if err != nil {
 		return nil, err
 	}
 
-	raw, ok := k.Raw(annotations, AnnEndpoints)
+	raw, ok := rawAnnotation(annotations, AnnEndpoints)
 	if !ok || strings.TrimSpace(raw) == "" {
 		return []spec{base}, nil
 	}
 
 	items, err := parseEndpointList(raw)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", k.Key(AnnEndpoints), err)
+		return nil, fmt.Errorf("%s: %w", Key(AnnEndpoints), err)
 	}
 
 	specs := make([]spec, 0, len(items))
@@ -175,28 +156,28 @@ func (s spec) inherit(base spec) spec {
 }
 
 // parseShortcuts reads the one-endpoint-per-object form.
-func parseShortcuts(k Keys, annotations map[string]string) (spec, error) {
+func parseShortcuts(annotations map[string]string) (spec, error) {
 	var s spec
 
-	s.name, _ = k.Get(annotations, AnnName)
-	s.group, s.groupSet = k.Get(annotations, AnnGroup)
-	s.url, _ = k.Get(annotations, AnnURL)
-	s.scheme, _ = k.Get(annotations, AnnScheme)
-	s.port, _ = k.Get(annotations, AnnPort)
-	s.path, _ = k.Get(annotations, AnnPath)
+	s.name, _ = Annotation(annotations, AnnName)
+	s.group, s.groupSet = Annotation(annotations, AnnGroup)
+	s.url, _ = Annotation(annotations, AnnURL)
+	s.scheme, _ = Annotation(annotations, AnnScheme)
+	s.port, _ = Annotation(annotations, AnnPort)
+	s.path, _ = Annotation(annotations, AnnPath)
 
-	if v, ok := k.Get(annotations, AnnTemplate); ok {
+	if v, ok := Annotation(annotations, AnnTemplate); ok {
 		s.templates = splitList(v)
 		s.templatesSet = true
 	}
-	if v, ok := k.Get(annotations, AnnTemplateExtra); ok {
+	if v, ok := Annotation(annotations, AnnTemplateExtra); ok {
 		s.extraTemplates = splitList(v)
 	}
 
-	if raw, ok := k.Raw(annotations, AnnEndpoint); ok && strings.TrimSpace(raw) != "" {
+	if raw, ok := rawAnnotation(annotations, AnnEndpoint); ok && strings.TrimSpace(raw) != "" {
 		patch, err := parseObject(raw)
 		if err != nil {
-			return spec{}, fmt.Errorf("%s: %w", k.Key(AnnEndpoint), err)
+			return spec{}, fmt.Errorf("%s: %w", Key(AnnEndpoint), err)
 		}
 		s.patch = patch
 	}
@@ -383,10 +364,12 @@ func toObject(v any) (config.Object, bool) {
 	}
 }
 
-// splitList parses a comma-separated annotation value, dropping empty entries so
-// a trailing comma is harmless.
+// splitList parses a comma- or newline-separated annotation value, dropping
+// empty entries so a trailing comma is harmless.
 func splitList(v string) []string {
-	parts := strings.Split(v, ",")
+	// Newlines separate as well as commas, so a long list can be written as a
+	// YAML block scalar instead of one unreadable line.
+	parts := strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == '\n' })
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		if p = strings.TrimSpace(p); p != "" {

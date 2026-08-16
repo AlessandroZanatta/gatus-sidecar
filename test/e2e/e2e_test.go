@@ -345,8 +345,8 @@ metadata:
   name: auth
   namespace: `+namespace+`
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: Online Shop
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: Online Shop
 spec:
   ports:
     - port: 9091
@@ -357,10 +357,10 @@ metadata:
   name: database-rw
   namespace: `+namespace+`
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: Online Shop
-    gatus.io/scheme: tcp
-    gatus.io/name: Cluster
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: Online Shop
+    gatus.kalexlab.xyz/scheme: tcp
+    gatus.kalexlab.xyz/name: Cluster
 spec:
   ports:
     - port: 5432
@@ -438,9 +438,9 @@ metadata:
   name: portal
   namespace: `+namespace+`
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: Platform
-    gatus.io/endpoint: |
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: Platform
+    gatus.kalexlab.xyz/endpoint: |
       conditions:
         - "[STATUS] > 400"
         - "[STATUS] < 500"
@@ -454,9 +454,9 @@ metadata:
   name: object-store
   namespace: `+namespace+`
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: Platform
-    gatus.io/endpoints: |
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: Platform
+    gatus.kalexlab.xyz/endpoints: |
       - name: Object store
         port: 9000
         path: /health
@@ -514,8 +514,8 @@ metadata:
   name: shop
   namespace: `+namespace+`
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: Shop
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: Shop
 spec:
   entryPoints: [websecure]
   routes:
@@ -558,8 +558,8 @@ metadata:
   name: edit-a
   namespace: `+namespace+`
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: Edit
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: Edit
 spec:
   ports:
     - port: 80
@@ -570,8 +570,8 @@ metadata:
   name: edit-b
   namespace: `+namespace+`
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: Edit
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: Edit
 spec:
   ports:
     - port: 81
@@ -610,8 +610,8 @@ metadata:
   name: ephemeral
   namespace: ` + namespace + `
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: Ephemeral
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: Ephemeral
 spec:
   ports:
     - port: 80
@@ -643,7 +643,7 @@ metadata:
   name: auto-yes
   namespace: `+namespace+`
   annotations:
-    gatus.io/group: Auto
+    gatus.kalexlab.xyz/group: Auto
 spec:
   ports:
     - port: 80
@@ -654,8 +654,8 @@ metadata:
   name: auto-no
   namespace: `+namespace+`
   annotations:
-    gatus.io/group: Auto
-    gatus.io/enabled: "false"
+    gatus.kalexlab.xyz/group: Auto
+    gatus.kalexlab.xyz/enabled: "false"
 spec:
   ports:
     - port: 80
@@ -690,8 +690,8 @@ metadata:
   name: status-probe
   namespace: `+namespace+`
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/group: Status
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/group: Status
 spec:
   ports:
     - port: 80

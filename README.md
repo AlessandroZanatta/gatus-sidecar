@@ -45,7 +45,7 @@ kubectl apply -f deploy/gatus-deployment.yaml
 Then annotate something:
 
 ```sh
-kubectl annotate service/web -n storefront gatus.io/enabled=true
+kubectl annotate service/web -n storefront gatus.kalexlab.xyz/enabled=true
 ```
 
 It appears on the status page within a second. No restart, no central file.
@@ -100,11 +100,12 @@ blocks the rest of the configuration from being written.
 
 ## Annotations
 
-Prefix is configurable with `--annotation-prefix`; default `gatus.io/`.
+Every annotation is prefixed `gatus.kalexlab.xyz/`.
 
 | Annotation       | Applies to                           | Meaning                                                    |
 | ---------------- | ------------------------------------ | ---------------------------------------------------------- |
 | `enabled`        | Service, IngressRoute                | `true` opts in, `false` opts out                           |
+| `exclude`        | Service, IngressRoute                | Name globs; an object naming itself opts out               |
 | `name`           | Service, IngressRoute                | Endpoint name. Default: sentence-cased object name         |
 | `group`          | Service, IngressRoute, **Namespace** | Group. Empty string means _no_ group                       |
 | `template`       | Service, IngressRoute                | Comma list; **replaces** the `defaultFor` selection        |
@@ -125,21 +126,46 @@ kind: Namespace
 metadata:
   name: storefront
   annotations:
-    gatus.io/group: Online Shop
+    gatus.kalexlab.xyz/group: Online Shop
 ```
 
 Precedence is object → namespace → sentence-cased namespace name. An **empty**
 `group` annotation means the endpoint sits at the top level, which is different
 from an absent one.
 
+### Excluding objects annotated in bulk
+
+Anything that propagates annotations to a family of objects at once — an
+operator copying metadata onto every Service it creates, a Helm chart's shared
+`commonAnnotations` — makes `enabled` all-or-nothing. `exclude` is a list each
+copy carries, and every object checks it against **its own name**: entries
+naming something else are ignored, so one shared value suppresses only the
+members it names.
+
+```yaml
+gatus.kalexlab.xyz/enabled: "true"
+gatus.kalexlab.xyz/exclude: db-replicas, *-headless
+```
+
+Applied to `db-primary`, `db-replicas` and `db-headless`, that leaves only
+`db-primary` monitored, without any per-object annotation.
+
+Entries are separated by commas or newlines and are `path.Match` globs, so
+`*-headless` covers a naming convention, `db-?` a single character, `db-[rn]o`
+a set, and a bare `*` everything. An unparseable pattern matches
+nothing rather than everything.
+
+Exclusion beats `enabled`: the annotation that turned the family on is the one
+every member inherited, so overriding it per object is the whole point.
+
 ### Several endpoints from one Service
 
 Items inherit the object's other annotations and override what they name:
 
 ```yaml
-gatus.io/enabled: "true"
-gatus.io/group: Platform
-gatus.io/endpoints: |
+gatus.kalexlab.xyz/enabled: "true"
+gatus.kalexlab.xyz/group: Platform
+gatus.kalexlab.xyz/endpoints: |
   - name: Object store
     port: 9000
     path: /health
@@ -150,8 +176,8 @@ gatus.io/endpoints: |
 ### Overriding one field
 
 ```yaml
-gatus.io/enabled: "true"
-gatus.io/endpoint: |
+gatus.kalexlab.xyz/enabled: "true"
+gatus.kalexlab.xyz/endpoint: |
   conditions:
     - "[STATUS] > 400"
     - "[STATUS] < 500"
@@ -205,7 +231,6 @@ the sidecar owns that list.
 | `--service-discovery`         | `opt-in`              | `opt-in`, `auto`, `disabled`                     |
 | `--ingressroute-discovery`    | `opt-in`              | Independent of the above                         |
 | `--namespace-selector`        | _(all)_               | Label selector limiting which namespaces count   |
-| `--annotation-prefix`         | `gatus.io/`           |                                                  |
 | `--external-suffix`           | `" (external)"`       | Distinguishes the IngressRoute's public endpoint |
 | `--cluster-domain`            | `cluster.local`       |                                                  |
 | `--default-scheme`            | `http`                | When neither workload nor template says          |

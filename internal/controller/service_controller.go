@@ -61,7 +61,7 @@ func (r *ServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	nsGroup := ""
 	if ns != nil {
-		nsGroup, _ = r.Options.Keys.Get(ns.Annotations, discovery.AnnGroup)
+		nsGroup, _ = discovery.Annotation(ns.Annotations, discovery.AnnGroup)
 	}
 
 	endpoints, err := r.Options.FromService(&svc, nsGroup)

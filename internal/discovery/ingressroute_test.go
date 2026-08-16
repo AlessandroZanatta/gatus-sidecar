@@ -46,6 +46,54 @@ func byName(endpoints []config.Endpoint) map[string]config.Endpoint {
 	return out
 }
 
+func TestFromIngressRouteExclude(t *testing.T) {
+	manifest := func(name, exclude string) string {
+		return `
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ` + name + `
+  namespace: shop
+  annotations:
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/exclude: "` + exclude + `"
+spec:
+  routes:
+    - match: Host(` + "`shop.example.com`" + `)
+      kind: Rule
+      services:
+        - name: shop
+          port: 2283
+`
+	}
+
+	tests := []struct {
+		name      string
+		routeName string
+		exclude   string
+		want      bool // want the route monitored
+	}{
+		{"names another route", "shop", "shop-admin", true},
+		{"names this route", "shop-admin", "shop-admin", false},
+		{"glob", "shop-admin", "*-admin", false},
+		{"bare star", "shop", "*", false},
+	}
+
+	resolver := staticResolver(map[string][]NamedPort{"shop/shop": {{Name: "http", Port: 2283}}})
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Defaults().FromIngressRoute(route(t, manifest(tc.routeName, tc.exclude)), "", resolver)
+			if err != nil {
+				t.Fatalf("FromIngressRoute: %v", err)
+			}
+			if monitored := len(got) > 0; monitored != tc.want {
+				t.Errorf("monitored = %v, want %v", monitored, tc.want)
+			}
+		})
+	}
+}
+
 func TestFromIngressRouteEmitsInternalAndExternal(t *testing.T) {
 	ir := route(t, `
 apiVersion: traefik.io/v1alpha1
@@ -54,7 +102,7 @@ metadata:
   name: shop
   namespace: shop
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(`+"`shop.example.com`"+`)
@@ -117,7 +165,7 @@ metadata:
   name: api
   namespace: storefront
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(`+"`shop.example.com`"+`) && PathPrefix(`+"`/api`"+`)
@@ -162,7 +210,7 @@ spec:
 		if v == "" {
 			return fmt.Sprintf(manifest, "")
 		}
-		return fmt.Sprintf(manifest, "  annotations:\n    gatus.io/enabled: \""+v+"\"")
+		return fmt.Sprintf(manifest, "  annotations:\n    gatus.kalexlab.xyz/enabled: \""+v+"\"")
 	}
 
 	tests := []struct {
@@ -203,7 +251,7 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(`+"`a.example.org`"+`, `+"`b.example.org`"+`)
@@ -239,7 +287,7 @@ metadata:
   name: split
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(`+"`x.example.org`"+`) && PathPrefix(`+"`/api`"+`)
@@ -280,7 +328,7 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(`+"`x.example.org`"+`)
@@ -308,7 +356,7 @@ metadata:
   name: web
   namespace: routes
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(`+"`x.example.org`"+`)
@@ -337,11 +385,11 @@ metadata:
   name: portal
   namespace: platform
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/name: Portal
-    gatus.io/group: Platform
-    gatus.io/template: strict
-    gatus.io/endpoint: |
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/name: Portal
+    gatus.kalexlab.xyz/group: Platform
+    gatus.kalexlab.xyz/template: strict
+    gatus.kalexlab.xyz/endpoint: |
       conditions:
         - "[STATUS] > 400"
 spec:
@@ -388,8 +436,8 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/url: https://status.example.org/health
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/url: https://status.example.org/health
 spec:
   routes:
     - match: Host(`+"`x.example.org`"+`)
@@ -418,8 +466,8 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
-    gatus.io/endpoints: |
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/endpoints: |
       - name: Only this
         url: https://one.example.org
 spec:
@@ -448,7 +496,7 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: PathPrefix(`+"`/api`"+`)
@@ -476,7 +524,7 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(`+"`good.example.org`"+`) && !Host(`+"`bad.example.org`"+`)
@@ -517,7 +565,7 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: NotAMatcher(` + "`x`" + `)
@@ -537,7 +585,7 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(` + "`x.example.org`" + `)
@@ -556,7 +604,7 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(` + "`x.example.org`" + `)
@@ -589,7 +637,7 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec: {}
 `)
 
@@ -613,7 +661,7 @@ metadata:
   name: web
   namespace: ns
   annotations:
-    gatus.io/enabled: "true"
+    gatus.kalexlab.xyz/enabled: "true"
 spec:
   routes:
     - match: Host(`+"`x.example.org`"+`)
