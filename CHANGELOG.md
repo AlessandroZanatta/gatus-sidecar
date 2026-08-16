@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.1.1...v0.2.0) (2026-08-16)
+
+
+### Features
+
+* make the crd consumable as a kustomize remote resource ([b87e72a](https://github.com/AlessandroZanatta/gatus-sidecar/commit/b87e72a45f2f578283eceefb79250e8ed8335f3d))
+
 ## [0.1.1](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.1.0...v0.1.1) (2026-08-16)
 
 
