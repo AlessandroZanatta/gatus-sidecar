@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.1.0...v0.1.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* build the arm64 image for arm64 ([723cd6f](https://github.com/AlessandroZanatta/gatus-sidecar/commit/723cd6f13cd847aa3f300c75c29166439345b077))
+
 ## 0.1.0 (2026-08-16)
 
 
