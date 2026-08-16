@@ -1,4 +1,3 @@
-CONTROLLER_TOOLS_VERSION ?= v0.19.0
 TRAEFIK_VERSION ?= v3.7.10
 
 # Version stamped into the binary. Overridden by CI with the release tag.
@@ -9,7 +8,11 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 GOTEST_FLAGS ?= -race -count=1
 
 LOCALBIN := $(CURDIR)/bin
-CONTROLLER_GEN := $(LOCALBIN)/controller-gen
+
+# controller-gen is a tool dependency in go.mod, so its version is pinned there,
+# its modules land in go.sum where CI's module cache already covers them, and
+# Renovate keeps it current along with every other Go dependency.
+CONTROLLER_GEN := go tool controller-gen
 
 GO_DIRS := ./cmd ./internal ./api ./test
 
@@ -26,17 +29,14 @@ all: generate manifests fmt vet build test ## Regenerate, format, build and test
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
-$(CONTROLLER_GEN): | $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
-
 ##@ Code generation
 
 .PHONY: generate
-generate: $(CONTROLLER_GEN) ## Generate deepcopy methods.
+generate: ## Generate deepcopy methods.
 	$(CONTROLLER_GEN) object:headerFile="" paths=./api/...
 
 .PHONY: manifests
-manifests: $(CONTROLLER_GEN) ## Generate CRD and RBAC manifests.
+manifests: ## Generate CRD and RBAC manifests.
 	$(CONTROLLER_GEN) crd paths=./api/... output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=gatus-sidecar paths=./internal/... output:rbac:artifacts:config=deploy/rbac
 
