@@ -47,12 +47,24 @@ jobs:
       # The release pull request only ever contains the version bump and the
       # CHANGELOG, both generated from commits CI already ran on, so there is
       # nothing left to review. Waiting for a human just delays the image.
+      #
+      # The pull request is looked up with gh rather than read out of
+      # release-please's pr output: that output is present but empty on the runs
+      # with nothing to release, and parsing it in an expression fails the
+      # workflow at template time, before any if: can skip the step.
       - name: Merge the release pull request
-        if: steps.release.outputs.pr
+        id: merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR: ${{ fromJSON(steps.release.outputs.pr).number }}
-        run: gh pr merge --squash --delete-branch --repo "$GITHUB_REPOSITORY" "$PR"
+        run: |
+          pr=$(gh pr list --state open --json number,headRefName \
+                 --jq '[.[] | select(.headRefName | startswith("release-please--"))][0].number')
+          if [ -z "$pr" ] || [ "$pr" = "null" ]; then
+            echo "no release pull request open; nothing to merge"
+            exit 0
+          fi
+          gh pr merge --squash --delete-branch "$pr"
+          echo "merged=true" >>"$GITHUB_OUTPUT"
 
       # A merge made with GITHUB_TOKEN raises no push event, by design, so this
       # workflow will not run again for it. release-please is re-run here instead:
@@ -60,7 +72,7 @@ jobs:
       # that the publish job below builds from.
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         id: tag
-        if: steps.release.outputs.pr
+        if: steps.merge.outputs.merged == 'true'
         with:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
