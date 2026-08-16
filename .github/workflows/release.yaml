@@ -1,7 +1,12 @@
 name: Release
 
+# Releasing is chained to CI rather than to the push itself: the workflow merges
+# its own release pull request, so a green main is the only thing standing
+# between a commit and a published image. A red main releases nothing.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -14,22 +19,48 @@ concurrency:
 
 jobs:
   # release-please reads Conventional Commit messages since the last release and
-  # keeps a pull request open containing the version bump and the generated
-  # CHANGELOG. Merging that PR is what tags a release, so nothing is published
-  # by accident: fix -> patch, feat -> minor, ! or BREAKING CHANGE -> major.
+  # opens a pull request containing the version bump and the generated CHANGELOG:
+  # fix -> patch, feat -> minor, ! or BREAKING CHANGE -> major. That pull request
+  # is merged here rather than by hand, so a push to main releases itself.
   release-please:
     name: Prepare release
     runs-on: ubuntu-latest
+    # workflow_run fires whatever CI concluded, so the conclusion is checked
+    # here. A manual dispatch is taken at its word.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: write
       pull-requests: write
     outputs:
-      released: ${{ steps.release.outputs.release_created }}
-      tag: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
+      # The release can be created by either release-please run: the first when
+      # the pull request was merged by hand, the second when this job merged it.
+      released: ${{ steps.release.outputs.release_created == 'true' || steps.tag.outputs.release_created == 'true' }}
+      tag: ${{ steps.tag.outputs.tag_name || steps.release.outputs.tag_name }}
+      version: ${{ steps.tag.outputs.version || steps.release.outputs.version }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         id: release
+        with:
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # The release pull request only ever contains the version bump and the
+      # CHANGELOG, both generated from commits CI already ran on, so there is
+      # nothing left to review. Waiting for a human just delays the image.
+      - name: Merge the release pull request
+        if: steps.release.outputs.pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ fromJSON(steps.release.outputs.pr).number }}
+        run: gh pr merge --squash --delete-branch --repo "$GITHUB_REPOSITORY" "$PR"
+
+      # A merge made with GITHUB_TOKEN raises no push event, by design, so this
+      # workflow will not run again for it. release-please is re-run here instead:
+      # it now sees the release commit on main and creates the tag and release
+      # that the publish job below builds from.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        id: tag
+        if: steps.release.outputs.pr
         with:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
