@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.2.0...v0.3.0) (2026-08-16)
+
+
+### Features
+
+* add exclude annotation, fix the annotation prefix ([856dcef](https://github.com/AlessandroZanatta/gatus-sidecar/commit/856dcefc83ec40afbf9deac5d5a80be27e2111d5))
+
+
+### Bug Fixes
+
+* update crd with new kubebuilder version ([b1db54c](https://github.com/AlessandroZanatta/gatus-sidecar/commit/b1db54c20156e5bbfca8d3e9d5814846f71484f6))
+* update go modules ([bebeedd](https://github.com/AlessandroZanatta/gatus-sidecar/commit/bebeedd0468017bd1bbc09ea0a364fb92f17c9ed))
+
 ## [0.2.0](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.1.1...v0.2.0) (2026-08-16)
 
 
