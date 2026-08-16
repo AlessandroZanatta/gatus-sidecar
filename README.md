@@ -1,5 +1,11 @@
 # gatus-sidecar
 
+> [!WARNING]
+> **Alpha software, and written by an AI.**
+>
+> This is a `0.x` project. The annotation contract and the CRD schema can change
+> in any release, including in ways that silently stop endpoints being monitored.
+
 Keeps a [Gatus](https://github.com/TwiN/gatus) configuration in sync with your
 cluster. Workloads declare their own monitoring through annotations, reusable
 configuration lives in a CRD, and the sidecar renders a complete `config.yaml`
@@ -7,7 +13,7 @@ into a volume Gatus hot-reloads.
 
 The problem it solves: a hand-maintained Gatus ConfigMap is a single file that
 every team has to edit, sitting far away from the workloads it describes. YAML
-anchors only deduplicate *within* that one file, so the config drifts from
+anchors only deduplicate _within_ that one file, so the config drifts from
 reality and grows without bound. This replaces it with per-workload annotations
 plus cluster-scoped templates.
 
@@ -20,7 +26,7 @@ Namespace ──┘                                    ▲
 EndpointTemplate ────────────────────────────────┘
 ```
 
-The registry holds *unresolved* endpoints: which templates an endpoint wants,
+The registry holds _unresolved_ endpoints: which templates an endpoint wants,
 not their contents. Templates are applied at render time, so editing a template
 re-renders everything that uses it with no reverse index to maintain.
 
@@ -70,7 +76,7 @@ metadata:
   name: default-http
 spec:
   extends: [common-alerts]
-  defaultFor: [http, https]     # applies without being named
+  defaultFor: [http, https] # applies without being named
   scheme: http
   endpoint:
     conditions: ["[STATUS] == 200"]
@@ -96,19 +102,19 @@ blocks the rest of the configuration from being written.
 
 Prefix is configurable with `--annotation-prefix`; default `gatus.io/`.
 
-| Annotation | Applies to | Meaning |
-|---|---|---|
-| `enabled` | Service, IngressRoute | `true` opts in, `false` opts out |
-| `name` | Service, IngressRoute | Endpoint name. Default: sentence-cased object name |
-| `group` | Service, IngressRoute, **Namespace** | Group. Empty string means *no* group |
-| `template` | Service, IngressRoute | Comma list; **replaces** the `defaultFor` selection |
-| `template-extra` | Service, IngressRoute | Comma list; **appended after** it |
-| `scheme` | Service, IngressRoute | `http`/`https`/`tcp`; also selects which templates apply |
-| `port` | Service | Port name or number. Required only when >1 port |
-| `path` | Service, IngressRoute | Appended to the derived URL |
-| `url` | Service, IngressRoute | Full override; skips all derivation |
-| `endpoint` | Service, IngressRoute | Raw YAML merged last — the escape hatch |
-| `endpoints` | Service, IngressRoute | Raw YAML **list**; emits several endpoints from one object |
+| Annotation       | Applies to                           | Meaning                                                    |
+| ---------------- | ------------------------------------ | ---------------------------------------------------------- |
+| `enabled`        | Service, IngressRoute                | `true` opts in, `false` opts out                           |
+| `name`           | Service, IngressRoute                | Endpoint name. Default: sentence-cased object name         |
+| `group`          | Service, IngressRoute, **Namespace** | Group. Empty string means _no_ group                       |
+| `template`       | Service, IngressRoute                | Comma list; **replaces** the `defaultFor` selection        |
+| `template-extra` | Service, IngressRoute                | Comma list; **appended after** it                          |
+| `scheme`         | Service, IngressRoute                | `http`/`https`/`tcp`; also selects which templates apply   |
+| `port`           | Service                              | Port name or number. Required only when >1 port            |
+| `path`           | Service, IngressRoute                | Appended to the derived URL                                |
+| `url`            | Service, IngressRoute                | Full override; skips all derivation                        |
+| `endpoint`       | Service, IngressRoute                | Raw YAML merged last — the escape hatch                    |
+| `endpoints`      | Service, IngressRoute                | Raw YAML **list**; emits several endpoints from one object |
 
 ### Group inheritance
 
@@ -192,21 +198,21 @@ the sidecar owns that list.
 
 ## Flags
 
-| Flag | Default | |
-|---|---|---|
-| `--base-config` | *(none)* | Operator-maintained part of the config |
-| `--output` | `/config/config.yaml` | Where to write |
-| `--service-discovery` | `opt-in` | `opt-in`, `auto`, `disabled` |
-| `--ingressroute-discovery` | `opt-in` | Independent of the above |
-| `--namespace-selector` | *(all)* | Label selector limiting which namespaces count |
-| `--annotation-prefix` | `gatus.io/` | |
-| `--external-suffix` | `" (external)"` | Distinguishes the IngressRoute's public endpoint |
-| `--cluster-domain` | `cluster.local` | |
-| `--default-scheme` | `http` | When neither workload nor template says |
-| `--group-from-namespace` | `true` | Derive a missing group from the namespace |
-| `--debounce` | `500ms` | Quiet period before rendering |
-| `--metrics-bind-address` | `:8081` | `0` disables |
-| `--health-probe-bind-address` | `:8082` | |
+| Flag                          | Default               |                                                  |
+| ----------------------------- | --------------------- | ------------------------------------------------ |
+| `--base-config`               | _(none)_              | Operator-maintained part of the config           |
+| `--output`                    | `/config/config.yaml` | Where to write                                   |
+| `--service-discovery`         | `opt-in`              | `opt-in`, `auto`, `disabled`                     |
+| `--ingressroute-discovery`    | `opt-in`              | Independent of the above                         |
+| `--namespace-selector`        | _(all)_               | Label selector limiting which namespaces count   |
+| `--annotation-prefix`         | `gatus.io/`           |                                                  |
+| `--external-suffix`           | `" (external)"`       | Distinguishes the IngressRoute's public endpoint |
+| `--cluster-domain`            | `cluster.local`       |                                                  |
+| `--default-scheme`            | `http`                | When neither workload nor template says          |
+| `--group-from-namespace`      | `true`                | Derive a missing group from the namespace        |
+| `--debounce`                  | `500ms`               | Quiet period before rendering                    |
+| `--metrics-bind-address`      | `:8081`               | `0` disables                                     |
+| `--health-probe-bind-address` | `:8082`               |                                                  |
 
 `auto` mode monitors every object unless it sets `enabled=false`. Expect noise:
 headless services, operator webhooks and metrics ports all become endpoints.
