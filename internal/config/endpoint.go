@@ -8,8 +8,9 @@ type Source string
 // annotated directly is a more deliberate statement of intent than an endpoint
 // inferred from an IngressRoute that happens to point at it.
 const (
-	SourceService      Source = "Service"
-	SourceIngressRoute Source = "IngressRoute"
+	SourceService         Source = "Service"
+	SourceIngressRoute    Source = "IngressRoute"
+	SourceIngressRouteTCP Source = "IngressRouteTCP"
 )
 
 // Priority returns the dedup precedence of a source; lower wins.
@@ -17,7 +18,7 @@ func (s Source) Priority() int {
 	switch s {
 	case SourceService:
 		return 0
-	case SourceIngressRoute:
+	case SourceIngressRoute, SourceIngressRouteTCP:
 		return 1
 	default:
 		return 100

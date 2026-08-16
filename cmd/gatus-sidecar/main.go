@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -46,18 +47,21 @@ func init() {
 }
 
 type options struct {
-	baseConfig       string
-	output           string
-	serviceMode      string
-	ingressRouteMode string
-	namespaceSel     string
-	externalSuffix   string
-	clusterDomain    string
-	defaultScheme    string
-	groupFromNS      bool
-	debounce         time.Duration
-	metricsAddr      string
-	healthAddr       string
+	baseConfig          string
+	output              string
+	serviceMode         string
+	ingressRouteMode    string
+	ingressRouteTCPMode string
+	traefikServices     string
+	entrypointPorts     string
+	namespaceSel        string
+	externalSuffix      string
+	clusterDomain       string
+	defaultScheme       string
+	groupFromNS         bool
+	debounce            time.Duration
+	metricsAddr         string
+	healthAddr          string
 }
 
 func main() {
@@ -70,6 +74,14 @@ func main() {
 		"How Services are picked up: opt-in, auto or disabled.")
 	flag.StringVar(&o.ingressRouteMode, "ingressroute-discovery", string(discovery.ModeOptIn),
 		"How IngressRoutes are picked up: opt-in, auto or disabled.")
+	flag.StringVar(&o.ingressRouteTCPMode, "ingressroutetcp-discovery", string(discovery.ModeOptIn),
+		"How IngressRouteTCPs are picked up: opt-in, auto or disabled.")
+	flag.StringVar(&o.traefikServices, "traefik-service", "",
+		"Comma-separated namespace/name Services supplying entrypoint ports. "+
+			"Empty discovers every Service labelled app.kubernetes.io/name=traefik.")
+	flag.StringVar(&o.entrypointPorts, "entrypoint-port", "",
+		"Comma-separated entrypoint=port overrides, for installations whose Service ports "+
+			"are not named after their entrypoints.")
 	flag.StringVar(&o.namespaceSel, "namespace-selector", "",
 		"Only watch namespaces matching this label selector. Empty means all namespaces.")
 	flag.StringVar(&o.externalSuffix, "external-suffix", " (external)",
@@ -117,6 +129,18 @@ func run(o options) error {
 	if err != nil {
 		return fmt.Errorf("--ingressroute-discovery: %w", err)
 	}
+	ingressRouteTCPMode, err := discovery.ParseMode(o.ingressRouteTCPMode)
+	if err != nil {
+		return fmt.Errorf("--ingressroutetcp-discovery: %w", err)
+	}
+	entrypointPorts, err := discovery.ParseEntrypointPorts(o.entrypointPorts)
+	if err != nil {
+		return fmt.Errorf("--entrypoint-port: %w", err)
+	}
+	traefikServices, err := parseTraefikServices(o.traefikServices)
+	if err != nil {
+		return fmt.Errorf("--traefik-service: %w", err)
+	}
 	if o.output == "" {
 		return fmt.Errorf("--output is required")
 	}
@@ -147,12 +171,13 @@ func run(o options) error {
 	}
 
 	discoveryOpts := discovery.Options{
-		ServiceMode:        serviceMode,
-		IngressRouteMode:   ingressRouteMode,
-		GroupFromNamespace: o.groupFromNS,
-		ClusterDomain:      o.clusterDomain,
-		ExternalSuffix:     o.externalSuffix,
-		DefaultScheme:      o.defaultScheme,
+		ServiceMode:         serviceMode,
+		IngressRouteMode:    ingressRouteMode,
+		IngressRouteTCPMode: ingressRouteTCPMode,
+		GroupFromNamespace:  o.groupFromNS,
+		ClusterDomain:       o.clusterDomain,
+		ExternalSuffix:      o.externalSuffix,
+		DefaultScheme:       o.defaultScheme,
 	}
 
 	reg := registry.New()
@@ -194,6 +219,32 @@ func run(o options) error {
 				return fmt.Errorf("set up ingressroute controller: %w", err)
 			}
 			primer.IngressRoute = route
+		}
+	}
+
+	if ingressRouteTCPMode != discovery.ModeDisabled {
+		// Same reasoning as above: no CRD, no watch, rather than a manager that
+		// refuses to start on a cluster without Traefik.
+		installed, err := crdInstalled(mgr, discovery.IngressRouteTCPGVK)
+		if err != nil {
+			return fmt.Errorf("check for the IngressRouteTCP CRD: %w", err)
+		}
+		switch {
+		case !installed:
+			log.Info("IngressRouteTCP discovery requested but the Traefik CRD is not installed; skipping it")
+		default:
+			route := &controller.IngressRouteTCPReconciler{
+				Client:            mgr.GetClient(),
+				Registry:          reg,
+				Options:           discoveryOpts,
+				NamespaceSelector: nsSelector,
+				TraefikServices:   traefikServices,
+				EntrypointPorts:   entrypointPorts,
+			}
+			if err := route.SetupWithManager(mgr); err != nil {
+				return fmt.Errorf("set up ingressroutetcp controller: %w", err)
+			}
+			primer.IngressRouteTCP = route
 		}
 	}
 
@@ -240,6 +291,7 @@ func run(o options) error {
 		"baseConfig", o.baseConfig,
 		"serviceDiscovery", serviceMode,
 		"ingressRouteDiscovery", ingressRouteMode,
+		"ingressRouteTCPDiscovery", ingressRouteTCPMode,
 		"annotationPrefix", discovery.AnnotationPrefix)
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
@@ -260,4 +312,27 @@ func crdInstalled(mgr ctrl.Manager, gvk schema.GroupVersionKind) (bool, error) {
 		return false, err
 	}
 	return mapping != nil, nil
+}
+
+// parseTraefikServices validates the --traefik-service list. Each entry has to
+// be namespace/name: a bare name would be ambiguous, since Traefik is routinely
+// installed more than once.
+func parseTraefikServices(v string) ([]string, error) {
+	if strings.TrimSpace(v) == "" {
+		return nil, nil
+	}
+
+	var out []string
+	for _, ref := range strings.Split(v, ",") {
+		ref = strings.TrimSpace(ref)
+		if ref == "" {
+			continue
+		}
+		namespace, name, ok := strings.Cut(ref, "/")
+		if !ok || namespace == "" || name == "" {
+			return nil, fmt.Errorf("%q is not namespace/name", ref)
+		}
+		out = append(out, ref)
+	}
+	return out, nil
 }

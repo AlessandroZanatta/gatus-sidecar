@@ -104,8 +104,10 @@ func walkTree(t *traefikrules.Tree, negated bool, out *parsedRule, seen map[stri
 		for _, host := range t.Value {
 			// A host containing a regexp placeholder cannot be turned into one
 			// concrete address, so it is skipped rather than checked literally.
+			// HostSNI(`*`) is the same problem in TCP form: it matches whatever
+			// reaches the entrypoint and names no address to connect to.
 			host = strings.TrimSpace(host)
-			if host == "" || strings.ContainsAny(host, "{}") || seen[host] {
+			if host == "" || host == "*" || strings.ContainsAny(host, "{}") || seen[host] {
 				continue
 			}
 			seen[host] = true

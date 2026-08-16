@@ -27,9 +27,11 @@ import (
 type Primer struct {
 	Client client.Client
 
-	// Service and IngressRoute are nil when that kind's discovery is disabled.
-	Service      *ServiceReconciler
-	IngressRoute *IngressRouteReconciler
+	// Service, IngressRoute and IngressRouteTCP are nil when that kind's
+	// discovery is disabled or its CRD is not installed.
+	Service         *ServiceReconciler
+	IngressRoute    *IngressRouteReconciler
+	IngressRouteTCP *IngressRouteTCPReconciler
 }
 
 // Prime reconciles every object once. Individual failures are reported but do
@@ -38,7 +40,7 @@ type Primer struct {
 func (p *Primer) Prime(ctx context.Context) error {
 	log := ctrl.LoggerFrom(ctx).WithName("primer")
 
-	services, routes := 0, 0
+	services, routes, tcpRoutes := 0, 0, 0
 	if p.Service != nil {
 		var list corev1.ServiceList
 		if err := p.Client.List(ctx, &list); err != nil {
@@ -78,6 +80,27 @@ func (p *Primer) Prime(ctx context.Context) error {
 		}
 	}
 
-	log.Info("primed registry", "services", services, "ingressroutes", routes)
+	if p.IngressRouteTCP != nil {
+		list := &unstructured.UnstructuredList{}
+		list.SetGroupVersionKind(discovery.IngressRouteTCPGVK)
+		if err := p.Client.List(ctx, list); err != nil {
+			return fmt.Errorf("list ingressroutetcps: %w", err)
+		}
+		for i := range list.Items {
+			req := ctrl.Request{NamespacedName: types.NamespacedName{
+				Namespace: list.Items[i].GetNamespace(),
+				Name:      list.Items[i].GetName(),
+			}}
+			if _, err := p.IngressRouteTCP.Reconcile(ctx, req); err != nil {
+				log.Error(err, "priming ingressroutetcp failed; the watch will retry it",
+					"ingressroutetcp", req.String())
+				continue
+			}
+			tcpRoutes++
+		}
+	}
+
+	log.Info("primed registry",
+		"services", services, "ingressroutes", routes, "ingressroutetcps", tcpRoutes)
 	return nil
 }

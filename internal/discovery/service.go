@@ -39,10 +39,12 @@ func ParseMode(v string) (Mode, error) {
 
 // Options configures how objects are turned into endpoints.
 type Options struct {
-	// ServiceMode and IngressRouteMode are independent so, for example, Services
-	// can be swept automatically while IngressRoutes stay opt-in.
-	ServiceMode      Mode
-	IngressRouteMode Mode
+	// ServiceMode, IngressRouteMode and IngressRouteTCPMode are independent so,
+	// for example, Services can be swept automatically while IngressRoutes stay
+	// opt-in.
+	ServiceMode         Mode
+	IngressRouteMode    Mode
+	IngressRouteTCPMode Mode
 
 	// GroupFromNamespace derives a missing group from the object's namespace.
 	// Disable it to leave endpoints ungrouped unless annotated.
@@ -62,12 +64,13 @@ type Options struct {
 // Defaults returns Options matching the documented flag defaults.
 func Defaults() Options {
 	return Options{
-		ServiceMode:        ModeOptIn,
-		IngressRouteMode:   ModeOptIn,
-		GroupFromNamespace: true,
-		ClusterDomain:      "cluster.local",
-		ExternalSuffix:     " (external)",
-		DefaultScheme:      "http",
+		ServiceMode:         ModeOptIn,
+		IngressRouteMode:    ModeOptIn,
+		IngressRouteTCPMode: ModeOptIn,
+		GroupFromNamespace:  true,
+		ClusterDomain:       "cluster.local",
+		ExternalSuffix:      " (external)",
+		DefaultScheme:       "http",
 	}
 }
 

@@ -106,6 +106,7 @@ Every annotation is prefixed `gatus.kalexlab.xyz/`.
 | ---------------- | ------------------------------------ | ---------------------------------------------------------- |
 | `enabled`        | Service, IngressRoute                | `true` opts in, `false` opts out                           |
 | `exclude`        | Service, IngressRoute                | Name globs; an object naming itself opts out               |
+| `traefik-service`| IngressRouteTCP                      | `namespace/name`; picks which Traefik publishes it          |
 | `name`           | Service, IngressRoute                | Endpoint name. Default: sentence-cased object name         |
 | `group`          | Service, IngressRoute, **Namespace** | Group. Empty string means _no_ group                       |
 | `template`       | Service, IngressRoute                | Comma list; **replaces** the `defaultFor` selection        |
@@ -214,6 +215,54 @@ address the route deliberately does not serve, and is not monitored.
 When a Service and the IngressRoute pointing at it resolve to the same URL, the
 directly annotated Service wins and the duplicate is dropped with a warning.
 
+## IngressRouteTCP
+
+A Traefik TCP router yields the same two endpoints, but its public address takes
+more work: the router names an **entrypoint**, not a port, and only the Traefik
+Service knows what that entrypoint was published on. The chart names each
+Service port after its entrypoint, so the port is discovered by joining the two.
+
+```yaml
+kind: IngressRouteTCP
+metadata:
+  annotations:
+    gatus.kalexlab.xyz/enabled: "true"
+spec:
+  entryPoints: [mqtt]          # -> traefik Service port named "mqtt" -> 8883
+  routes:
+    - match: HostSNI(`mqtt.example.org`)
+      services:
+        - name: mosquitto
+          port: 1883
+  tls:
+    secretName: example-org-tls
+```
+
+becomes `tls://mqtt.example.org:8883` and `tcp://mosquitto.ns.svc:1883`. The
+scheme follows the router: `tls` when Traefik terminates TLS, so the check
+exercises the certificate rather than only the socket, and `tcp` when it does
+not. The in-cluster endpoint is always `tcp` — the backend is a plain socket
+whatever sits in front of it.
+
+Several Traefik installations are supported, and expected: splitting internal
+from external traffic gives two Services, each publishing its own ports. Every
+Service labelled `app.kubernetes.io/name=traefik` is read, or exactly the ones
+named by `--traefik-service`. When two installations publish the same entrypoint
+on **different** ports, the route says which it belongs to:
+
+```yaml
+gatus.kalexlab.xyz/traefik-service: traefik/external
+```
+
+Without that, the ambiguity is reported and the route is skipped rather than
+monitored at a guessed address. Installations agreeing on a port are not
+ambiguous and need nothing. A NodePort installation contributes its node port,
+since that is what a client outside the cluster connects to; anything else —
+host ports, unusual port names — is what `--entrypoint-port mqtt=8883` is for.
+
+A router matching `HostSNI(`*`)` serves whatever reaches the entrypoint and names
+no address, so only its in-cluster endpoint is produced.
+
 ## Base configuration
 
 Settings that are genuinely singletons — `security`, `storage`, `alerting`
@@ -230,6 +279,9 @@ the sidecar owns that list.
 | `--output`                    | `/config/config.yaml` | Where to write                                   |
 | `--service-discovery`         | `opt-in`              | `opt-in`, `auto`, `disabled`                     |
 | `--ingressroute-discovery`    | `opt-in`              | Independent of the above                         |
+| `--ingressroutetcp-discovery` | `opt-in`              | Traefik TCP routers                              |
+| `--traefik-service`           | _(auto)_              | `namespace/name` list supplying entrypoint ports |
+| `--entrypoint-port`           | _(auto)_              | `entrypoint=port` overrides                      |
 | `--namespace-selector`        | _(all)_               | Label selector limiting which namespaces count   |
 | `--external-suffix`           | `" (external)"`       | Distinguishes the IngressRoute's public endpoint |
 | `--cluster-domain`            | `cluster.local`       |                                                  |

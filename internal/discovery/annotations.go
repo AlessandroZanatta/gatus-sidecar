@@ -16,18 +16,19 @@ const AnnotationPrefix = "gatus.kalexlab.xyz/"
 
 // Annotation suffixes, appended to the prefix.
 const (
-	AnnEnabled       = "enabled"
-	AnnExclude       = "exclude"
-	AnnName          = "name"
-	AnnGroup         = "group"
-	AnnTemplate      = "template"
-	AnnTemplateExtra = "template-extra"
-	AnnScheme        = "scheme"
-	AnnPort          = "port"
-	AnnPath          = "path"
-	AnnURL           = "url"
-	AnnEndpoint      = "endpoint"
-	AnnEndpoints     = "endpoints"
+	AnnEnabled        = "enabled"
+	AnnExclude        = "exclude"
+	AnnTraefikService = "traefik-service"
+	AnnName           = "name"
+	AnnGroup          = "group"
+	AnnTemplate       = "template"
+	AnnTemplateExtra  = "template-extra"
+	AnnScheme         = "scheme"
+	AnnPort           = "port"
+	AnnPath           = "path"
+	AnnURL            = "url"
+	AnnEndpoint       = "endpoint"
+	AnnEndpoints      = "endpoints"
 )
 
 // Key returns the full annotation key for a suffix.
@@ -73,13 +74,14 @@ type spec struct {
 // fields Gatus itself understands. They are consumed during parsing and must not
 // leak into the rendered output.
 var controlKeys = map[string]bool{
-	AnnScheme:        true,
-	AnnPort:          true,
-	AnnPath:          true,
-	AnnTemplate:      true,
-	AnnTemplateExtra: true,
-	AnnEnabled:       true,
-	AnnExclude:       true,
+	AnnScheme:         true,
+	AnnPort:           true,
+	AnnPath:           true,
+	AnnTemplate:       true,
+	AnnTemplateExtra:  true,
+	AnnEnabled:        true,
+	AnnExclude:        true,
+	AnnTraefikService: true,
 }
 
 // identityKeys are consumed into spec fields but are also real Gatus fields, so
