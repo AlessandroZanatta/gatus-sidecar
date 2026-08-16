@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.4.0...v0.5.0) (2026-08-16)
+
+
+### Features
+
+* discover IngressRouteTCP endpoints and their entrypoint ports ([484e5b8](https://github.com/AlessandroZanatta/gatus-sidecar/commit/484e5b89a8c811a49679a8992ad003d8d62c99b9))
+
 ## [0.4.0](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.3.0...v0.4.0) (2026-08-16)
 
 
