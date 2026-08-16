@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -374,4 +375,159 @@ func modTime(t *testing.T, path string) time.Time {
 		t.Fatalf("stat %s: %v", path, err)
 	}
 	return fi.ModTime()
+}
+
+// The first configuration Gatus sees must be complete. Gatus deletes the stored
+// history of every endpoint missing from a configuration it reloads, so a file
+// published before the registry is populated destroys real data.
+func TestRenderLoopPrimesBeforeTheFirstWrite(t *testing.T) {
+	f := newLoopFixture(t, "")
+
+	primed := make(chan struct{})
+	f.loop.Prime = func(context.Context) error {
+		f.reg.Set(registry.Key{Kind: "Service", Namespace: "ns", Name: "web"},
+			[]config.Endpoint{endpoint("Web", "Shop", "web.ns.svc", 80)})
+		f.reg.Set(registry.Key{Kind: "Service", Namespace: "ns", Name: "api"},
+			[]config.Endpoint{endpoint("Api", "Shop", "api.ns.svc", 8080)})
+		close(primed)
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go f.loop.Start(ctx)
+
+	<-primed
+	waitFor(t, "initial write", func() bool { return f.endpointCount() >= 0 })
+
+	// Not "eventually 2": the very first file must already have both, since an
+	// intermediate one would already have cost history.
+	if got := f.endpointCount(); got != 2 {
+		t.Errorf("first render wrote %d endpoints, want 2 (the primed registry)", got)
+	}
+}
+
+// Priming raises a change signal of its own. Left unread it would trigger a
+// second, identical render straight after the first.
+func TestRenderLoopDoesNotRenderTwiceAfterPriming(t *testing.T) {
+	f := newLoopFixture(t, "")
+	f.loop.Prime = func(context.Context) error {
+		f.reg.Set(registry.Key{Kind: "Service", Namespace: "ns", Name: "web"},
+			[]config.Endpoint{endpoint("Web", "Shop", "web.ns.svc", 80)})
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go f.loop.Start(ctx)
+
+	waitFor(t, "initial write", func() bool { return f.endpointCount() == 1 })
+
+	info, err := os.Stat(f.output)
+	if err != nil {
+		t.Fatalf("stat output: %v", err)
+	}
+	// A re-render of unchanged state must not rewrite the file: Gatus reloads on
+	// any change and a reload restarts every check's interval.
+	time.Sleep(100 * time.Millisecond)
+	again, err := os.Stat(f.output)
+	if err != nil {
+		t.Fatalf("stat output: %v", err)
+	}
+	if !again.ModTime().Equal(info.ModTime()) {
+		t.Errorf("file rewritten after priming: %v then %v", info.ModTime(), again.ModTime())
+	}
+}
+
+// A failed prime must not publish the partial configuration priming exists to
+// prevent, but it must not wedge the sidecar either.
+func TestRenderLoopSurvivesAFailedPrime(t *testing.T) {
+	f := newLoopFixture(t, "")
+	f.loop.Prime = func(context.Context) error { return errors.New("api server said no") }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go f.loop.Start(ctx)
+
+	waitFor(t, "initial write", func() bool { return f.endpointCount() == 0 })
+
+	f.reg.Set(registry.Key{Kind: "Service", Namespace: "ns", Name: "web"},
+		[]config.Endpoint{endpoint("Web", "Shop", "web.ns.svc", 80)})
+	waitFor(t, "render after a watch event", func() bool { return f.endpointCount() == 1 })
+}
+
+// WaitForCacheSync returning false means the manager is shutting down; rendering
+// from an unsynced cache would write a configuration missing most of the cluster.
+func TestRenderLoopStopsWhenCachesDoNotSync(t *testing.T) {
+	f := newLoopFixture(t, "")
+	f.loop.WaitForCacheSync = func(context.Context) bool { return false }
+	primed := false
+	f.loop.Prime = func(context.Context) error { primed = true; return nil }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := f.loop.Start(ctx)
+	if err == nil {
+		t.Fatal("Start() = nil, want an error when the caches do not sync")
+	}
+	if primed {
+		t.Error("primed despite the caches not syncing")
+	}
+	if _, statErr := os.Stat(f.output); statErr == nil {
+		t.Error("wrote a configuration despite the caches not syncing")
+	}
+}
+
+// Warnings describe a standing condition. An operator rewriting its own Services
+// several times a second must not reprint the same warnings on every render.
+func TestRenderLoopLogsWarningsOnlyWhenTheyChange(t *testing.T) {
+	f := newLoopFixture(t, "")
+	rec := &recordingLogger{}
+
+	// Two Services claiming one (group, name) pair: the duplicate is dropped with
+	// a warning on every render.
+	dup := func(ref string) config.Endpoint {
+		ep := endpoint("Web", "Shop", "web.ns.svc", 80)
+		ep.SourceRef = ref
+		return ep
+	}
+	f.reg.Set(registry.Key{Kind: "Service", Namespace: "ns", Name: "a"}, []config.Endpoint{dup("ns/a")})
+	f.reg.Set(registry.Key{Kind: "Service", Namespace: "ns", Name: "b"}, []config.Endpoint{dup("ns/b")})
+
+	ctx := context.Background()
+	for i := 0; i < 5; i++ {
+		if err := f.loop.render(ctx, rec); err != nil {
+			t.Fatalf("render %d: %v", i, err)
+		}
+	}
+
+	if got := rec.count("endpoint skipped"); got != 1 {
+		t.Errorf("logged %d skip warnings over 5 identical renders, want 1", got)
+	}
+
+	// A warning that goes away is worth saying out loud.
+	f.reg.Delete(registry.Key{Kind: "Service", Namespace: "ns", Name: "b"})
+	if err := f.loop.render(ctx, rec); err != nil {
+		t.Fatalf("render after fix: %v", err)
+	}
+	if got := rec.count("all previously skipped endpoints now render"); got != 1 {
+		t.Errorf("logged the recovery %d times, want 1", got)
+	}
+}
+
+// recordingLogger captures messages for assertions.
+type recordingLogger struct{ msgs []string }
+
+func (l *recordingLogger) Info(msg string, _ ...any)           { l.msgs = append(l.msgs, msg) }
+func (l *recordingLogger) Error(_ error, msg string, _ ...any) { l.msgs = append(l.msgs, msg) }
+
+func (l *recordingLogger) count(msg string) int {
+	n := 0
+	for _, m := range l.msgs {
+		if m == msg {
+			n++
+		}
+	}
+	return n
 }

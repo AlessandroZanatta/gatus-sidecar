@@ -245,9 +245,17 @@ headless services, operator webhooks and metrics ports all become endpoints.
 
 ## Behaviour worth knowing
 
+- **The first configuration written is already complete.** Gatus deletes the
+  stored history of every endpoint missing from a configuration it reloads, so
+  publishing a file while the registry is still filling in destroys history for
+  whatever has not reconciled yet. The sidecar waits for its caches, primes the
+  registry from a full listing, and only then writes.
 - **Writes are atomic and skipped when unchanged.** Gatus reloads on file change,
   and a reload restarts every check's interval, so a no-op reconcile must not
   touch the file.
+- **Skip warnings are logged when they change, not on every render.** A render
+  happens per watch event, and an operator that rewrites its own Services stays
+  noisy indefinitely.
 - **A failed render leaves the previous file in place.** A stale configuration
   still monitors things; an empty one does not.
 - **A malformed annotation drops that one endpoint**, logs why, and lets the rest

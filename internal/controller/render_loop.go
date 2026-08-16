@@ -33,8 +33,23 @@ type RenderLoop struct {
 	// every check's interval on reload, so batching matters.
 	Debounce time.Duration
 
+	// WaitForCacheSync blocks until every watch has its initial listing, and
+	// Prime then reconciles all of it into the registry. Both are optional, but
+	// without them the first render sees a registry that is still filling up, and
+	// Gatus deletes the history of every endpoint missing from a configuration it
+	// reloads. Publishing a partial file is not a transient cosmetic problem: the
+	// data is gone.
+	WaitForCacheSync func(context.Context) bool
+	Prime            func(context.Context) error
+
 	// Metrics is optional.
 	Metrics *Metrics
+
+	// lastWarnings is the warning set reported by the previous render, so a
+	// cluster whose objects are rewritten by an operator does not reprint the
+	// same warnings on every pass.
+	lastWarnings []string
+	warnedOnce   bool
 
 	// ready flips once a render has succeeded, so the sidecar does not report
 	// ready while Gatus is still looking at a stale or absent file.
@@ -64,6 +79,27 @@ func (l *RenderLoop) Start(ctx context.Context) error {
 		<-timer.C
 	}
 	pending := false
+
+	// The first render must see the whole cluster, not a registry that is still
+	// filling in: Gatus purges the history of everything absent from the file it
+	// reloads. Waiting for the caches and then priming from a full listing makes
+	// the first published configuration complete.
+	if l.WaitForCacheSync != nil && !l.WaitForCacheSync(ctx) {
+		return fmt.Errorf("caches did not sync")
+	}
+	if l.Prime != nil {
+		if err := l.Prime(ctx); err != nil {
+			// Rendering anyway would publish exactly the partial configuration
+			// priming exists to prevent, so wait for the watches to fill the
+			// registry and render on the next change instead.
+			log.Error(err, "priming the registry failed; waiting for watch events before the first render")
+		}
+	}
+	// Drain the signal priming just raised: its work is already in this render.
+	select {
+	case <-l.Registry.Changed():
+	default:
+	}
 
 	// Render once at startup so the file exists even in a cluster with nothing
 	// annotated yet. Gatus refuses to start without a config.
@@ -118,8 +154,19 @@ func (l *RenderLoop) render(ctx context.Context, log logr) error {
 	endpoints := l.Registry.Snapshot()
 	result := l.Renderer.Render(endpoints, templates)
 
-	for _, w := range result.Warnings {
-		log.Info("endpoint skipped", "reason", w)
+	// Warnings describe a standing condition, not an event, and a render happens
+	// for every watch event. An operator that rewrites its own Services a few
+	// times a second would otherwise reprint the same unchanged warnings
+	// thousands of times an hour and bury everything else.
+	if !l.warnedOnce || !equalWarnings(l.lastWarnings, result.Warnings) {
+		for _, w := range result.Warnings {
+			log.Info("endpoint skipped", "reason", w)
+		}
+		if l.warnedOnce && len(result.Warnings) == 0 {
+			log.Info("all previously skipped endpoints now render")
+		}
+		l.lastWarnings = result.Warnings
+		l.warnedOnce = true
 	}
 
 	content, err := config.Marshal(config.Assemble(base, result.Endpoints))
@@ -158,6 +205,20 @@ func (l *RenderLoop) render(ctx context.Context, log logr) error {
 			"warnings", len(result.Warnings))
 	}
 	return nil
+}
+
+// equalWarnings compares two warning sets. Order is stable across renders of the
+// same cluster state, so a positional comparison is enough.
+func equalWarnings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // logr is the subset of the logging interface this loop needs, kept local so the

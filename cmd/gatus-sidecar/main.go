@@ -157,15 +157,19 @@ func run(o options) error {
 
 	reg := registry.New()
 
+	primer := &controller.Primer{Client: mgr.GetClient()}
+
 	if serviceMode != discovery.ModeDisabled {
-		if err := (&controller.ServiceReconciler{
+		svc := &controller.ServiceReconciler{
 			Client:            mgr.GetClient(),
 			Registry:          reg,
 			Options:           discoveryOpts,
 			NamespaceSelector: nsSelector,
-		}).SetupWithManager(mgr); err != nil {
+		}
+		if err := svc.SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("set up service controller: %w", err)
 		}
+		primer.Service = svc
 	}
 
 	if ingressRouteMode != discovery.ModeDisabled {
@@ -180,14 +184,16 @@ func run(o options) error {
 		case !installed:
 			log.Info("IngressRoute discovery requested but the Traefik CRD is not installed; skipping it")
 		default:
-			if err := (&controller.IngressRouteReconciler{
+			route := &controller.IngressRouteReconciler{
 				Client:            mgr.GetClient(),
 				Registry:          reg,
 				Options:           discoveryOpts,
 				NamespaceSelector: nsSelector,
-			}).SetupWithManager(mgr); err != nil {
+			}
+			if err := route.SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("set up ingressroute controller: %w", err)
 			}
+			primer.IngressRoute = route
 		}
 	}
 
@@ -206,6 +212,9 @@ func run(o options) error {
 		BaseConfigPath: o.baseConfig,
 		Debounce:       o.debounce,
 		Metrics:        controller.NewMetrics(),
+
+		WaitForCacheSync: mgr.GetCache().WaitForCacheSync,
+		Prime:            primer.Prime,
 	}
 	if err := mgr.Add(loop); err != nil {
 		return fmt.Errorf("add render loop: %w", err)
