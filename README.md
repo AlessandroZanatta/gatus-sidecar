@@ -212,8 +212,12 @@ Match rules are parsed with Traefik's own parser, so precedence, grouping and
 negation are handled correctly — `!Host(\`internal.example.org\`)` describes an
 address the route deliberately does not serve, and is not monitored.
 
-When a Service and the IngressRoute pointing at it resolve to the same URL, the
-directly annotated Service wins and the duplicate is dropped with a warning.
+When a Service is annotated and an IngressRoute points at it, the in-cluster
+endpoint inferred from the route is dropped: same address, and the annotated
+Service is the deliberate statement of the two. They are compared by host and
+port rather than by URL, so a health path on the Service does not defeat it. The
+route's public endpoint always stays — nothing else covers DNS, TLS and the
+proxy.
 
 ## IngressRouteTCP
 

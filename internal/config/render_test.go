@@ -268,8 +268,11 @@ func TestRenderDedupsByURL(t *testing.T) {
 	if got.Endpoints[0]["name"] != "Shop" {
 		t.Errorf("kept %v, want the Service-derived Shop", got.Endpoints[0]["name"])
 	}
-	if len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], "already checks") {
-		t.Errorf("Warnings = %v, want one explaining the dedup", got.Warnings)
+	// Silently: an annotated Service outranking the route pointing at it is the
+	// documented precedence, and warning would leave one standing forever on a
+	// configuration that is behaving as designed.
+	if len(got.Warnings) != 0 {
+		t.Errorf("Warnings = %v, want none for documented precedence", got.Warnings)
 	}
 }
 
@@ -449,5 +452,83 @@ func TestRenderDuplicateURLFromOneObjectIsNotAWarning(t *testing.T) {
 	}
 	if len(res.Warnings) != 0 {
 		t.Errorf("warnings = %v, want none", res.Warnings)
+	}
+}
+
+// An annotated Service naming a health path used to defeat dedup: the URLs no
+// longer matched, so the route's inferred in-cluster check survived alongside
+// it and failed on its own.
+func TestRenderDropsInferredCheckOfADirectlyMonitoredService(t *testing.T) {
+	svc := Endpoint{
+		Source: SourceService, SourceRef: "nextcloud/nextcloud",
+		Name: "Nextcloud", Group: "Nextcloud",
+		Host: "nextcloud.nextcloud.svc.cluster.local", Port: 80, Path: "/status.php",
+	}
+	inferred := Endpoint{
+		Source: SourceIngressRoute, SourceRef: "nextcloud/nextcloud-ingress",
+		Name: "Nextcloud ingress", Group: "Nextcloud",
+		Host: "nextcloud.nextcloud.svc.cluster.local", Port: 80,
+	}
+	external := Endpoint{
+		Source: SourceIngressRoute, SourceRef: "nextcloud/nextcloud-ingress",
+		Name: "Nextcloud ingress (external)", Group: "Nextcloud",
+		URL: "https://cloud.example.org", Scheme: "https",
+	}
+
+	res := NewRenderer(RenderOptions{}).Render([]Endpoint{svc, inferred, external}, NewTemplateSet(nil))
+
+	if len(res.Endpoints) != 2 {
+		t.Fatalf("rendered %d endpoints, want 2: %v", len(res.Endpoints), res.Endpoints)
+	}
+	names := map[string]bool{}
+	for _, ep := range res.Endpoints {
+		names[stringValue(ep, "name")] = true
+	}
+	if !names["Nextcloud"] || !names["Nextcloud ingress (external)"] {
+		t.Errorf("kept %v, want the Service check and the public one", names)
+	}
+	// The public endpoint is the only thing covering DNS, TLS and the proxy.
+	if names["Nextcloud ingress"] {
+		t.Error("the inferred in-cluster check survived")
+	}
+	if len(res.Warnings) != 0 {
+		t.Errorf("warnings = %v, want none for documented precedence", res.Warnings)
+	}
+}
+
+// Two routes to one Service at different paths are both inferred, so neither
+// outranks the other and both stay.
+func TestRenderKeepsSeveralInferredChecksWhenNoServiceIsAnnotated(t *testing.T) {
+	a := Endpoint{
+		Source: SourceIngressRoute, SourceRef: "shop/ingress",
+		Name: "A", Group: "Shop", Host: "web.shop.svc.cluster.local", Port: 80,
+	}
+	b := Endpoint{
+		Source: SourceIngressRoute, SourceRef: "shop/ingress",
+		Name: "B", Group: "Shop", Host: "web.shop.svc.cluster.local", Port: 80, Path: "/api",
+	}
+
+	res := NewRenderer(RenderOptions{}).Render([]Endpoint{a, b}, NewTemplateSet(nil))
+
+	if len(res.Endpoints) != 2 {
+		t.Fatalf("rendered %d endpoints, want 2: %v", len(res.Endpoints), res.Endpoints)
+	}
+}
+
+// A Service annotated on a different port is a different thing to check.
+func TestRenderKeepsInferredCheckOnAnotherPort(t *testing.T) {
+	svc := Endpoint{
+		Source: SourceService, SourceRef: "shop/web",
+		Name: "Web", Group: "Shop", Host: "web.shop.svc.cluster.local", Port: 8080,
+	}
+	inferred := Endpoint{
+		Source: SourceIngressRoute, SourceRef: "shop/ingress",
+		Name: "Web ingress", Group: "Shop", Host: "web.shop.svc.cluster.local", Port: 80,
+	}
+
+	res := NewRenderer(RenderOptions{}).Render([]Endpoint{svc, inferred}, NewTemplateSet(nil))
+
+	if len(res.Endpoints) != 2 {
+		t.Fatalf("rendered %d endpoints, want 2: %v", len(res.Endpoints), res.Endpoints)
 	}
 }

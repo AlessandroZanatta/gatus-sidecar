@@ -1,5 +1,7 @@
 package config
 
+import "fmt"
+
 // Source identifies which kind of Kubernetes object an endpoint was derived from.
 type Source string
 
@@ -12,6 +14,13 @@ const (
 	SourceIngressRoute    Source = "IngressRoute"
 	SourceIngressRouteTCP Source = "IngressRouteTCP"
 )
+
+// address is the in-cluster host and port an endpoint checks, ignoring the path.
+// It identifies the workload rather than the check, which is what precedence
+// between a Service and an ingress route pointing at it turns on.
+func (e Endpoint) address() string {
+	return fmt.Sprintf("%s:%d", e.Host, e.Port)
+}
 
 // Priority returns the dedup precedence of a source; lower wins.
 func (s Source) Priority() int {

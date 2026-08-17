@@ -51,6 +51,7 @@ func (r *Renderer) Render(endpoints []Endpoint, templates *TemplateSet) RenderRe
 	res := RenderResult{TemplateUsage: map[string]int{}}
 
 	ordered := sortForDedup(endpoints)
+	ordered = dedupByWorkload(ordered)
 	ordered, res.Warnings = dedupByURL(ordered, r.opts.DefaultScheme, templates, res.Warnings)
 
 	seenNames := make(map[[2]string]Endpoint, len(ordered))
@@ -180,6 +181,40 @@ func sortForDedup(endpoints []Endpoint) []Endpoint {
 		}
 		return out[i].Name < out[j].Name
 	})
+	return out
+}
+
+// dedupByWorkload drops an endpoint inferred from an ingress route when the
+// Service it routes to is monitored directly.
+//
+// Matching on the exact URL is not enough: the moment the annotated Service
+// names a health path, the two URLs differ and both survive, leaving the same
+// workload checked twice. The inferred one then fails on its own for reasons the
+// author already worked around on the Service - a redirect to a path that is not
+// there, an endpoint that needs a header - and there is no annotation on the
+// Service that can reach it.
+//
+// Only the in-cluster endpoints are compared, by address rather than by URL. The
+// route's public endpoint exercises DNS, TLS and the proxy, and nothing else
+// covers it.
+func dedupByWorkload(endpoints []Endpoint) []Endpoint {
+	covered := make(map[string]bool, len(endpoints))
+	for _, ep := range endpoints {
+		if ep.Source == SourceService && ep.Host != "" {
+			covered[ep.address()] = true
+		}
+	}
+	if len(covered) == 0 {
+		return endpoints
+	}
+
+	out := make([]Endpoint, 0, len(endpoints))
+	for _, ep := range endpoints {
+		if ep.Source != SourceService && ep.Host != "" && covered[ep.address()] {
+			continue
+		}
+		out = append(out, ep)
+	}
 	return out
 }
 
