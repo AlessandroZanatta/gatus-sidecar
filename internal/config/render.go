@@ -53,7 +53,7 @@ func (r *Renderer) Render(endpoints []Endpoint, templates *TemplateSet) RenderRe
 	ordered := sortForDedup(endpoints)
 	ordered, res.Warnings = dedupByURL(ordered, r.opts.DefaultScheme, templates, res.Warnings)
 
-	seenNames := make(map[[2]string]string, len(ordered))
+	seenNames := make(map[[2]string]Endpoint, len(ordered))
 	rendered := make([]Object, 0, len(ordered))
 
 	for _, ep := range ordered {
@@ -64,12 +64,20 @@ func (r *Renderer) Render(endpoints []Endpoint, templates *TemplateSet) RenderRe
 		if prev, clash := seenNames[key]; clash {
 			// Gatus keys stored history on group and name, so a duplicate would
 			// silently interleave two services' results.
-			res.Warnings = append(res.Warnings, fmt.Sprintf(
-				"%s %s: dropping endpoint %q in group %q, that name is already used by %s",
-				ep.Source, ep.SourceRef, ep.Name, ep.Group, prev))
+			//
+			// Two endpoints naming the same workload are not that: they are the
+			// documented precedence, an annotated Service beating the
+			// IngressRoute that happens to point at it. Reporting it would leave
+			// a warning standing forever for a configuration that is behaving as
+			// designed, so it is logged at debug level instead.
+			if !sameWorkload(prev, ep) {
+				res.Warnings = append(res.Warnings, fmt.Sprintf(
+					"%s %s: dropping endpoint %q in group %q, that name is already used by %s %s",
+					ep.Source, ep.SourceRef, ep.Name, ep.Group, prev.Source, prev.SourceRef))
+			}
 			continue
 		}
-		seenNames[key] = string(ep.Source) + " " + ep.SourceRef
+		seenNames[key] = ep
 
 		rendered = append(rendered, obj)
 	}
@@ -188,15 +196,30 @@ func dedupByURL(endpoints []Endpoint, defaultScheme string, templates *TemplateS
 	for _, ep := range endpoints {
 		url := buildURL(ep, r.resolveScheme(ep, templates))
 		if prev, dup := seen[url]; dup {
-			warnings = append(warnings, fmt.Sprintf(
-				"%s %s: dropping endpoint %q, %s %s already checks %s",
-				ep.Source, ep.SourceRef, ep.Name, prev.Source, prev.SourceRef, url))
+			// One object producing the same address twice is the sidecar
+			// collapsing it, typically because a path annotation overrode the
+			// paths that told two of its routes apart. There is nothing for the
+			// author to fix, so it is not reported as a warning.
+			if prev.SourceRef != ep.SourceRef || prev.Source != ep.Source {
+				warnings = append(warnings, fmt.Sprintf(
+					"%s %s: dropping endpoint %q, %s %s already checks %s",
+					ep.Source, ep.SourceRef, ep.Name, prev.Source, prev.SourceRef, url))
+			}
 			continue
 		}
 		seen[url] = ep
 		out = append(out, ep)
 	}
 	return out, warnings
+}
+
+// sameWorkload reports whether two endpoints check the same in-cluster address.
+//
+// It is what separates "an annotated Service and the IngressRoute pointing at
+// it agree on a name", which is precedence working, from two unrelated things
+// claiming one name, which loses a check and is worth saying.
+func sameWorkload(a, b Endpoint) bool {
+	return a.Host != "" && a.Host == b.Host
 }
 
 // Assemble merges a rendered endpoints list into a base configuration. The base

@@ -384,3 +384,70 @@ func TestAssembleDropsEndpointsFromBase(t *testing.T) {
 		t.Errorf("endpoints = %#v, want only the rendered list", got["endpoints"])
 	}
 }
+
+// An annotated Service beating the IngressRoute that points at the same
+// workload is the documented precedence, not a problem to report. Alerting on
+// render warnings would otherwise fire forever on a healthy configuration.
+func TestRenderPrecedenceOverTheSameWorkloadIsNotAWarning(t *testing.T) {
+	svc := Endpoint{
+		Source: SourceService, SourceRef: "shop/api",
+		Name: "Api", Group: "Shop",
+		Host: "api.shop.svc.cluster.local", Port: 3000, Path: "/health",
+	}
+	fromRoute := Endpoint{
+		Source: SourceIngressRoute, SourceRef: "shop/api-ingress",
+		Name: "Api", Group: "Shop",
+		Host: "api.shop.svc.cluster.local", Port: 3000, Path: "/api",
+	}
+
+	res := NewRenderer(RenderOptions{}).Render([]Endpoint{svc, fromRoute}, NewTemplateSet(nil))
+
+	if len(res.Endpoints) != 1 {
+		t.Fatalf("rendered %d endpoints, want 1", len(res.Endpoints))
+	}
+	if len(res.Warnings) != 0 {
+		t.Errorf("warnings = %v, want none for documented precedence", res.Warnings)
+	}
+}
+
+// Two unrelated workloads claiming one name does lose a check, and is worth
+// saying out loud.
+func TestRenderNameClashBetweenDifferentWorkloadsWarns(t *testing.T) {
+	a := Endpoint{
+		Source: SourceService, SourceRef: "shop/api",
+		Name: "Api", Group: "Shop", Host: "api.shop.svc.cluster.local", Port: 3000,
+	}
+	b := Endpoint{
+		Source: SourceService, SourceRef: "shop/api-v2",
+		Name: "Api", Group: "Shop", Host: "api-v2.shop.svc.cluster.local", Port: 3000,
+	}
+
+	res := NewRenderer(RenderOptions{}).Render([]Endpoint{a, b}, NewTemplateSet(nil))
+
+	if len(res.Endpoints) != 1 {
+		t.Fatalf("rendered %d endpoints, want 1", len(res.Endpoints))
+	}
+	if len(res.Warnings) != 1 {
+		t.Fatalf("warnings = %v, want exactly one", res.Warnings)
+	}
+}
+
+// One object yielding the same address twice is the sidecar collapsing it,
+// usually because a path annotation overrode what told two routes apart.
+func TestRenderDuplicateURLFromOneObjectIsNotAWarning(t *testing.T) {
+	dup := func(name string) Endpoint {
+		return Endpoint{
+			Source: SourceIngressRoute, SourceRef: "shop/shop-ingress",
+			Name: name, Group: "Shop", URL: "https://shop.example.org",
+		}
+	}
+
+	res := NewRenderer(RenderOptions{}).Render([]Endpoint{dup("A"), dup("B")}, NewTemplateSet(nil))
+
+	if len(res.Endpoints) != 1 {
+		t.Fatalf("rendered %d endpoints, want 1", len(res.Endpoints))
+	}
+	if len(res.Warnings) != 0 {
+		t.Errorf("warnings = %v, want none", res.Warnings)
+	}
+}

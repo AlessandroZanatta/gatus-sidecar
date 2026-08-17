@@ -761,3 +761,57 @@ spec:
 		t.Errorf("internal = %s:%d, want web.shop.svc.cluster.local:8080", internal.Host, internal.Port)
 	}
 }
+
+// One host served at several paths is how an API and a UI end up behind one
+// name. Both are real addresses; naming them identically made the renderer drop
+// one, so the API went unmonitored.
+func TestFromIngressRouteNamesPathsApartOnOneHost(t *testing.T) {
+	ir := route(t, `
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: music-ingress
+  namespace: music
+  annotations:
+    gatus.kalexlab.xyz/enabled: "true"
+spec:
+  routes:
+    - match: Host(`+"`get.music.example.org`"+`) && PathPrefix(`+"`/api`"+`)
+      kind: Rule
+      services:
+        - name: helper-backend
+          port: 8000
+    - match: Host(`+"`get.music.example.org`"+`)
+      kind: Rule
+      services:
+        - name: helper-frontend
+          port: 80
+`)
+
+	got, err := Defaults().FromIngressRoute(ir, "", staticResolver(map[string][]NamedPort{
+		"music/helper-backend":  {{Name: "http", Port: 8000}},
+		"music/helper-frontend": {{Name: "http", Port: 80}},
+	}))
+	if err != nil {
+		t.Fatalf("FromIngressRoute: %v", err)
+	}
+
+	eps := byName(got)
+	// The pathless endpoint keeps its name, so an existing endpoint is not
+	// renamed - and its history not reset - by adding a path to the route.
+	plain, ok := eps["Music ingress (external)"]
+	if !ok {
+		t.Fatalf("no unsuffixed external endpoint in %v", names(got))
+	}
+	if want := "https://get.music.example.org"; plain.URL != want {
+		t.Errorf("URL = %q, want %q", plain.URL, want)
+	}
+
+	api, ok := eps["Music ingress /api (external)"]
+	if !ok {
+		t.Fatalf("no path-suffixed external endpoint in %v", names(got))
+	}
+	if want := "https://get.music.example.org/api"; api.URL != want {
+		t.Errorf("URL = %q, want %q", api.URL, want)
+	}
+}

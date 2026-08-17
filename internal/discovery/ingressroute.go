@@ -201,6 +201,20 @@ func routeTargets(obj *unstructured.Unstructured) ([]hostTarget, []backendRef, e
 func (o Options) externalEndpoints(base spec, ctx specContext, hosts []hostTarget) []config.Endpoint {
 	out := make([]config.Endpoint, 0, len(hosts))
 
+	// One host served at several paths is the usual way to put an API and a UI
+	// behind one name. Those are different addresses and both are worth
+	// checking, so the path has to reach the name: Gatus keys history on the
+	// name, and without it the second endpoint collides with the first and is
+	// dropped.
+	perHost := map[string]int{}
+	for _, h := range hosts {
+		perHost[h.host]++
+	}
+	// Names are disambiguated by distinct host, not by target: adding a second
+	// path to a route must not rename the endpoint that was already there, and
+	// renaming resets its history in Gatus.
+	distinctHosts := len(perHost)
+
 	for _, h := range hosts {
 		s := base
 		// An ingress is TLS-terminated in practice, and checking the plaintext
@@ -214,7 +228,15 @@ func (o Options) externalEndpoints(base spec, ctx specContext, hosts []hostTarge
 		s.url = s.scheme + "://" + h.host + normalisePath(s.path)
 
 		ep := o.baseEndpoint(s, ctx)
-		ep.Name = o.externalName(base, ctx, h.host, len(hosts))
+		ep.Name = o.externalName(base, ctx, h.host, distinctHosts)
+		if perHost[h.host] > 1 {
+			// Only the paths are suffixed, never the bare host, so adding a
+			// second path to an existing route does not rename - and so reset
+			// the history of - the endpoint that was already there.
+			if path := normalisePath(h.path); path != "" {
+				ep.Name = o.externalNameWithPath(base, ctx, h.host, distinctHosts, path)
+			}
+		}
 		ep.URL = s.url
 		ep.Scheme = s.scheme
 		out = append(out, ep)
@@ -290,6 +312,20 @@ func (o Options) externalName(base spec, ctx specContext, host string, total int
 		name += " " + host
 	}
 	return name + o.ExternalSuffix
+}
+
+// externalNameWithPath disambiguates two endpoints that share a host, so that a
+// route serving an API and a UI under one name yields two distinct endpoints
+// rather than one dropped as a duplicate.
+func (o Options) externalNameWithPath(base spec, ctx specContext, host string, hosts int, path string) string {
+	name := base.name
+	if name == "" {
+		name = DisplayName(ctx.fallback)
+	}
+	if hosts > 1 {
+		name += " " + host
+	}
+	return name + " " + path + o.ExternalSuffix
 }
 
 // internalName names an in-cluster endpoint, falling back to the backend's own
