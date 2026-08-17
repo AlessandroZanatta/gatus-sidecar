@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.5.1...v0.5.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* stop dropping a second path on one host, and quieten expected drops ([6d67917](https://github.com/AlessandroZanatta/gatus-sidecar/commit/6d679178f8d9e4e05f99526fc3538b63bd0a616a))
+
 ## [0.5.1](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.5.0...v0.5.1) (2026-08-17)
 
 
