@@ -1,123 +1,85 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:best-practices",
-    ":dependencyDashboard",
-    ":semanticCommits"
-  ],
-  "description": [
-    "release-please derives the version and changelog from commit messages, so Renovate has to write titles it understands. deps is a declared changelog section, and the PR-title workflow requires a lowercase subject, which semantic commits already produce.",
-    "postUpdateOptions: Renovate edits go.mod directly; without gomodTidy, go.sum keeps stale entries and the build fails.",
-    "minimumReleaseAge: nothing merges itself until it has survived a week in public. Automerge means no human reads the diff, so this is the only thing standing between a compromised or yanked release and the image that gets published. internalChecksFilter strict makes Renovate withhold the pull request entirely until the age is met, rather than opening one that silently cannot merge."
-  ],
-  "semanticCommitType": "deps",
-  "semanticCommitScope": null,
-  "postUpdateOptions": [
-    "gomodTidy",
-    "gomodUpdateImportPaths"
-  ],
-  "minimumReleaseAge": "7 days",
-  "internalChecksFilter": "strict",
-  "timezone": "Europe/Rome",
-  "schedule": [
-    "before 6am on monday"
-  ],
-  "prConcurrentLimit": 5,
-  "packageRules": [
-    {
-      "description": "Non-major updates merge themselves once CI is green. CI runs the unit suite and the full e2e suite against a real cluster, so a green run is real evidence the update is safe.",
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest",
-        "pin"
-      ],
-      "automerge": true,
-      "automergeType": "pr",
-      "platformAutomerge": true
-    },
-    {
-      "description": "Everything non-major in one pull request, so a quiet week costs one CI run rather than a dozen.",
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
-      "groupName": "go modules"
-    },
-    {
-      "description": "config:best-practices pins actions to digests, which makes every upstream release a digest bump. Grouped, they are one pull request instead of a dozen.",
-      "matchManagers": [
-        "github-actions"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest"
-      ],
-      "groupName": "github actions"
-    },
-    {
-      "description": "A Go toolchain bump changes what the release image is built with. Worth a human looking at it.",
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchDepTypes": [
-        "golang"
-      ],
-      "automerge": false
-    },
-    {
-      "description": "Majors never merge themselves, and stay off the pull request list until approved on the dependency dashboard.",
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false,
-      "dependencyDashboardApproval": true,
-      "labels": [
-        "dependencies",
-        "major"
-      ]
-    },
-    {
-      "description": "controller-runtime tracks Kubernetes minor versions and its minor releases carry breaking API changes, so it is treated like a major.",
-      "matchPackageNames": [
-        "sigs.k8s.io/controller-runtime",
-        "sigs.k8s.io/controller-tools"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "major"
-      ],
-      "automerge": false,
-      "dependencyDashboardApproval": true
-    },
-    {
-      "description": "Traefik is imported only for its rule parser, but the vendored CRD in test/e2e/testdata and TRAEFIK_VERSION in the Makefile are pinned separately and have to be refreshed by hand with 'make update-traefik-crd'.",
-      "matchPackageNames": [
-        "github.com/traefik/traefik/v3"
-      ],
-      "automerge": false,
-      "dependencyDashboardApproval": true
-    }
-  ],
-  "vulnerabilityAlerts": {
-    "description": "A known exploited vulnerability is the one case where waiting out the release age is the greater risk, so security fixes bypass both the age check and the schedule. Dependabot security updates should be turned off for this repo so the two do not both open pull requests.",
-    "enabled": true,
-    "minimumReleaseAge": null,
-    "schedule": null,
-    "automerge": true,
-    "labels": [
-      "security"
-    ]
-  },
-  "lockFileMaintenance": {
-    "enabled": true,
-    "automerge": true,
-    "schedule": [
-      "before 6am on the first day of the month"
-    ]
-  }
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": [
+		"config:best-practices",
+		":dependencyDashboard",
+		":semanticCommits",
+		":assignee(AlessandroZanatta)"
+	],
+	"description": [
+		"release-please derives the version and changelog from commit messages, so Renovate has to write titles it understands. deps is a declared changelog section, and the PR-title workflow requires a lowercase subject, which semantic commits already produce.",
+		"postUpdateOptions: Renovate edits go.mod directly; without gomodTidy, go.sum keeps stale entries and the build fails.",
+		"minimumReleaseAge: nothing merges itself until it has survived a week in public. Automerge means no human reads the diff, so this is the only thing standing between a compromised or yanked release and the image that gets published. internalChecksFilter strict makes Renovate withhold the pull request entirely until the age is met, rather than opening one that silently cannot merge."
+	],
+	"semanticCommitType": "deps",
+	"semanticCommitScope": null,
+	"postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+	"minimumReleaseAge": "7 days",
+	"internalChecksFilter": "strict",
+	"timezone": "Europe/Rome",
+	"schedule": ["before 6am on monday"],
+	"prConcurrentLimit": 5,
+	"packageRules": [
+		{
+			"description": "Non-major updates merge themselves once CI is green. CI runs the unit suite and the full e2e suite against a real cluster, so a green run is real evidence the update is safe.",
+			"matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+			"automerge": true,
+			"automergeType": "pr",
+			"platformAutomerge": true
+		},
+		{
+			"description": "Everything non-major in one pull request, so a quiet week costs one CI run rather than a dozen.",
+			"matchManagers": ["gomod"],
+			"matchUpdateTypes": ["minor", "patch"],
+			"groupName": "go modules"
+		},
+		{
+			"description": "config:best-practices pins actions to digests, which makes every upstream release a digest bump. Grouped, they are one pull request instead of a dozen.",
+			"matchManagers": ["github-actions"],
+			"matchUpdateTypes": ["minor", "patch", "digest"],
+			"groupName": "github actions"
+		},
+		{
+			"description": "A Go toolchain bump changes what the release image is built with. Worth a human looking at it.",
+			"matchManagers": ["gomod"],
+			"matchDepTypes": ["golang"],
+			"automerge": false
+		},
+		{
+			"description": "Majors never merge themselves, and stay off the pull request list until approved on the dependency dashboard.",
+			"matchUpdateTypes": ["major"],
+			"automerge": false,
+			"dependencyDashboardApproval": true,
+			"labels": ["dependencies", "major"]
+		},
+		{
+			"description": "controller-runtime tracks Kubernetes minor versions and its minor releases carry breaking API changes, so it is treated like a major.",
+			"matchPackageNames": [
+				"sigs.k8s.io/controller-runtime",
+				"sigs.k8s.io/controller-tools"
+			],
+			"matchUpdateTypes": ["minor", "major"],
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		},
+		{
+			"description": "Traefik is imported only for its rule parser, but the vendored CRD in test/e2e/testdata and TRAEFIK_VERSION in the Makefile are pinned separately and have to be refreshed by hand with 'make update-traefik-crd'.",
+			"matchPackageNames": ["github.com/traefik/traefik/v3"],
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		}
+	],
+	"vulnerabilityAlerts": {
+		"description": "A known exploited vulnerability is the one case where waiting out the release age is the greater risk, so security fixes bypass both the age check and the schedule. Dependabot security updates should be turned off for this repo so the two do not both open pull requests.",
+		"enabled": true,
+		"minimumReleaseAge": null,
+		"schedule": null,
+		"automerge": true,
+		"labels": ["security"]
+	},
+	"lockFileMaintenance": {
+		"enabled": true,
+		"automerge": true,
+		"schedule": ["before 6am on the first day of the month"]
+	}
 }
