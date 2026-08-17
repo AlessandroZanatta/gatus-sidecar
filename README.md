@@ -212,6 +212,16 @@ Match rules are parsed with Traefik's own parser, so precedence, grouping and
 negation are handled correctly — `!Host(\`internal.example.org\`)` describes an
 address the route deliberately does not serve, and is not monitored.
 
+One host served at several paths — an API and a UI behind one name — yields one
+endpoint per path, with the path in the name of all but the pathless one. Names
+key off distinct hosts, so adding a path to a route never renames the endpoint
+that was already there: Gatus stores history per name, and a rename loses it.
+
+Backends that are not Kubernetes Services are skipped. `kind: TraefikService`
+names something inside Traefik — `api@internal`, or a weighted or mirroring
+service — none of which has a cluster address to check. The route's public
+endpoint is still monitored.
+
 When a Service is annotated and an IngressRoute points at it, the in-cluster
 endpoint inferred from the route is dropped: same address, and the annotated
 Service is the deliberate statement of the two. They are compared by host and
@@ -330,6 +340,10 @@ headless services, operator webhooks and metrics ports all become endpoints.
 Alert on `_render_warnings > 0` (part of the intended configuration is silently
 missing) and on `_last_successful_render_timestamp_seconds` going stale (the
 file on disk is drifting from the cluster).
+
+That first alert is only usable because the drops that are _meant_ to happen —
+precedence over the same workload, one object yielding one address twice — are
+not counted. A warning means something the author wrote is not being checked.
 
 ## RBAC
 
