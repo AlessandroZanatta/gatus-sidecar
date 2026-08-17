@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.3](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.5.2...v0.5.3) (2026-08-17)
+
+
+### Bug Fixes
+
+* drop the inferred check when its Service is monitored directly ([12ae3b6](https://github.com/AlessandroZanatta/gatus-sidecar/commit/12ae3b620e89b185142143baf2c666dd76ebef46))
+
+
+### Documentation
+
+* cover path naming, skipped backends and warning semantics ([19c1f48](https://github.com/AlessandroZanatta/gatus-sidecar/commit/19c1f48f49a7fabaae33f5ce898d0585621ffa1b))
+
 ## [0.5.2](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.5.1...v0.5.2) (2026-08-17)
 
 
