@@ -160,6 +160,15 @@ func routeTargets(obj *unstructured.Unstructured) ([]hostTarget, []backendRef, e
 			if name == "" {
 				continue
 			}
+			// A backend is a Kubernetes Service unless it says otherwise. The
+			// alternative, kind: TraefikService, names something inside Traefik:
+			// api@internal, or a weighted or mirroring service defined by a CRD.
+			// None of those have a cluster address to check, and treating one as
+			// a Service resolves nothing and drops the whole route. The public
+			// address from the route's own rule still gets monitored.
+			if kind, _, _ := unstructured.NestedString(svc, "kind"); kind != "" && kind != "Service" {
+				continue
+			}
 			ns, _, _ := unstructured.NestedString(svc, "namespace")
 			if ns == "" {
 				ns = obj.GetNamespace()

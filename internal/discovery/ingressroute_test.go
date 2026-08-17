@@ -686,3 +686,78 @@ func names(endpoints []config.Endpoint) []string {
 	}
 	return out
 }
+
+// A backend with kind: TraefikService names something inside Traefik, such as
+// api@internal, rather than a Kubernetes Service. Resolving it as one used to
+// fail and take the route's public endpoint down with it.
+func TestFromIngressRouteSkipsTraefikServiceBackends(t *testing.T) {
+	ir := route(t, `
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-dashboard-ingress
+  namespace: traefik
+  annotations:
+    gatus.kalexlab.xyz/enabled: "true"
+spec:
+  routes:
+    - match: Host(`+"`traefik.example.org`"+`)
+      kind: Rule
+      services:
+        - kind: TraefikService
+          name: api@internal
+`)
+
+	// No resolver entries at all: consulting one would fail the route.
+	got, err := Defaults().FromIngressRoute(ir, "", staticResolver(nil))
+	if err != nil {
+		t.Fatalf("FromIngressRoute: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d endpoints, want 1 (the public address): %v", len(got), names(got))
+	}
+	if want := "https://traefik.example.org"; got[0].URL != want {
+		t.Errorf("URL = %q, want %q", got[0].URL, want)
+	}
+}
+
+// A route mixing both kinds keeps the Kubernetes backend.
+func TestFromIngressRouteKeepsServiceBackendsAlongsideTraefikOnes(t *testing.T) {
+	ir := route(t, `
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mixed
+  namespace: shop
+  annotations:
+    gatus.kalexlab.xyz/enabled: "true"
+spec:
+  routes:
+    - match: Host(`+"`shop.example.org`"+`)
+      kind: Rule
+      services:
+        - kind: TraefikService
+          name: weighted
+        - name: web
+          port: 8080
+`)
+
+	got, err := Defaults().FromIngressRoute(ir, "", staticResolver(map[string][]NamedPort{
+		"shop/web": {{Name: "http", Port: 8080}},
+	}))
+	if err != nil {
+		t.Fatalf("FromIngressRoute: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d endpoints, want 2: %v", len(got), names(got))
+	}
+	// One backend survives the skip, so it is named after the route rather than
+	// after itself, as any single-backend route is.
+	internal, ok := byName(got)["Mixed"]
+	if !ok {
+		t.Fatalf("the Service backend is missing from %v", names(got))
+	}
+	if internal.Host != "web.shop.svc.cluster.local" || internal.Port != 8080 {
+		t.Errorf("internal = %s:%d, want web.shop.svc.cluster.local:8080", internal.Host, internal.Port)
+	}
+}
