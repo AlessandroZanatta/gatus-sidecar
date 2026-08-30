@@ -114,6 +114,10 @@ type hostTarget struct {
 }
 
 // routeTargets reads the parts of an IngressRoute's spec that describe addresses.
+//
+// The exclude-route annotation is applied here rather than to the finished
+// endpoints, so that suppressing one rule also drops the backend only that rule
+// pointed at, while a backend another rule still forwards to stays monitored.
 func routeTargets(obj *unstructured.Unstructured) ([]hostTarget, []backendRef, error) {
 	routes, found, err := unstructured.NestedSlice(obj.Object, "spec", "routes")
 	if err != nil {
@@ -121,6 +125,11 @@ func routeTargets(obj *unstructured.Unstructured) ([]hostTarget, []backendRef, e
 	}
 	if !found {
 		return nil, nil, nil
+	}
+
+	var skip []string
+	if v, ok := Annotation(obj.GetAnnotations(), AnnExcludeRoute); ok {
+		skip = splitList(v)
 	}
 
 	var (
@@ -141,13 +150,33 @@ func routeTargets(obj *unstructured.Unstructured) ([]hostTarget, []backendRef, e
 		if err != nil {
 			return nil, nil, fmt.Errorf("route %d: %w", i, err)
 		}
+		// A rule named by the path it serves is suppressed whole, so that one
+		// entry covers that path on every host the rule matches.
+		if parsed.Path != "" && matchesAny(skip, parsed.Path) {
+			continue
+		}
+
+		dropped := 0
 		for _, host := range parsed.Hosts {
+			// An address is named by its host or by host and path joined, so an
+			// entry can suppress a hostname everywhere it appears or exactly one
+			// of the addresses served under it.
+			if matchesAny(skip, host, host+parsed.Path) {
+				dropped++
+				continue
+			}
 			key := host + parsed.Path
 			if seenHost[key] {
 				continue
 			}
 			seenHost[key] = true
 			hosts = append(hosts, hostTarget{host: host, path: parsed.Path})
+		}
+		// A rule with no address left to check contributes nothing, its backends
+		// included - unless another rule forwards to the same backend, which
+		// records it on its own.
+		if len(parsed.Hosts) > 0 && dropped == len(parsed.Hosts) {
+			continue
 		}
 
 		services, _, _ := unstructured.NestedSlice(route, "services")
@@ -185,6 +214,12 @@ func routeTargets(obj *unstructured.Unstructured) ([]hostTarget, []backendRef, e
 
 			key := ns + "/" + name + ":" + port
 			if seenSvc[key] {
+				continue
+			}
+			// A backend is named by its own name or by namespace/name, so the
+			// in-cluster check can be dropped while the public address it sits
+			// behind stays monitored.
+			if matchesAny(skip, name, ns+"/"+name) {
 				continue
 			}
 			seenSvc[key] = true

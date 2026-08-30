@@ -230,3 +230,20 @@ func TestFromIngressRouteTCPExplicitURLSkipsEntrypointLookup(t *testing.T) {
 		t.Fatalf("got %v, want the annotated url alone", got)
 	}
 }
+
+// exclude-route names an address rather than the object, so it reaches a TCP
+// router's HostSNI the same way it reaches an HTTP rule's Host.
+func TestFromIngressRouteTCPExcludeRoute(t *testing.T) {
+	o := Defaults()
+	manifest := strings.Replace(mosquittoRoute,
+		`    gatus.kalexlab.xyz/enabled: "true"`,
+		"    gatus.kalexlab.xyz/enabled: \"true\"\n    gatus.kalexlab.xyz/exclude-route: mqtt.example.org", 1)
+
+	got, err := o.FromIngressRouteTCP(route(t, manifest), "", mosquittoResolver(), mqttPorts())
+	if err != nil {
+		t.Fatalf("FromIngressRouteTCP: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("got %v, want nothing: the only rule was suppressed, its backend with it", names(got))
+	}
+}

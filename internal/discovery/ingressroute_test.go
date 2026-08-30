@@ -815,3 +815,150 @@ spec:
 		t.Errorf("URL = %q, want %q", api.URL, want)
 	}
 }
+
+// TestFromIngressRouteExcludeRoute covers suppressing one rule of a route that
+// serves several. The object-level exclude annotation cannot do this, since it
+// matches the object's name and so drops every rule at once.
+func TestFromIngressRouteExcludeRoute(t *testing.T) {
+	manifest := func(exclude string) string {
+		return `
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: music
+  namespace: media
+  annotations:
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/exclude-route: "` + exclude + `"
+spec:
+  routes:
+    - match: Host(` + "`music.example.com`" + `)
+      kind: Rule
+      services:
+        - name: navidrome
+          port: 4533
+    - match: Host(` + "`music.example.com`" + `) && PathPrefix(` + "`/rest/`" + `)
+      kind: Rule
+      services:
+        - name: navidrome
+          port: 4533
+    - match: Host(` + "`get.music.example.com`" + `)
+      kind: Rule
+      services:
+        - name: helper
+          port: 80
+`
+	}
+
+	resolver := staticResolver(map[string][]NamedPort{
+		"media/navidrome": {{Name: "http", Port: 4533}},
+		"media/helper":    {{Name: "http", Port: 80}},
+	})
+
+	tests := []struct {
+		name    string
+		exclude string
+		want    []string
+	}{
+		{
+			name:    "path suppresses that rule on every host",
+			exclude: "/rest/",
+			want: []string{
+				"Music music.example.com (external)",
+				"Music get.music.example.com (external)",
+				"Navidrome", "Helper",
+			},
+		},
+		{
+			name:    "host and path together suppress only that address",
+			exclude: "music.example.com/rest/",
+			want: []string{
+				"Music music.example.com (external)",
+				"Music get.music.example.com (external)",
+				"Navidrome", "Helper",
+			},
+		},
+		{
+			name:    "host suppresses every rule serving it",
+			exclude: "music.example.com",
+			want:    []string{"Music (external)", "Music"},
+		},
+		{
+			name:    "glob covers a family of hosts",
+			exclude: "*.music.example.com",
+			want:    []string{"Music (external)", "Music /rest/ (external)", "Music"},
+		},
+		{
+			name:    "backend name suppresses the in-cluster check",
+			exclude: "helper",
+			want: []string{
+				"Music music.example.com (external)",
+				"Music music.example.com /rest/ (external)",
+				"Music get.music.example.com (external)",
+				"Music",
+			},
+		},
+		{
+			name:    "absent entry changes nothing",
+			exclude: "/other/",
+			want: []string{
+				"Music music.example.com (external)",
+				"Music music.example.com /rest/ (external)",
+				"Music get.music.example.com (external)",
+				"Navidrome", "Helper",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Defaults().FromIngressRoute(route(t, manifest(tc.exclude)), "", resolver)
+			if err != nil {
+				t.Fatalf("FromIngressRoute: %v", err)
+			}
+			eps := byName(got)
+			if len(eps) != len(tc.want) {
+				t.Fatalf("got %v, want %v", names(got), tc.want)
+			}
+			for _, want := range tc.want {
+				if _, ok := eps[want]; !ok {
+					t.Errorf("missing %q, got %v", want, names(got))
+				}
+			}
+		})
+	}
+}
+
+// exclude-route is a control annotation: it configures discovery and must not
+// reach the rendered endpoint.
+func TestExcludeRouteDoesNotLeakIntoPatch(t *testing.T) {
+	ir := route(t, `
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: shop
+  namespace: shop
+  annotations:
+    gatus.kalexlab.xyz/enabled: "true"
+    gatus.kalexlab.xyz/exclude-route: /admin/
+spec:
+  routes:
+    - match: Host(`+"`shop.example.com`"+`)
+      kind: Rule
+      services:
+        - name: shop
+          port: 2283
+`)
+
+	got, err := Defaults().FromIngressRoute(ir, "", staticResolver(map[string][]NamedPort{
+		"shop/shop": {{Name: "http", Port: 2283}},
+	}))
+	if err != nil {
+		t.Fatalf("FromIngressRoute: %v", err)
+	}
+	for _, ep := range got {
+		if _, ok := ep.Patch[AnnExcludeRoute]; ok {
+			t.Errorf("exclude-route leaked into the endpoint patch: %v", ep.Patch)
+		}
+	}
+}

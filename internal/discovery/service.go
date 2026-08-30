@@ -107,9 +107,24 @@ func excluded(name string, annotations map[string]string) bool {
 	if !ok {
 		return false
 	}
-	for _, pattern := range splitList(v) {
-		if matched, err := path.Match(pattern, name); err == nil && matched {
-			return true
+	return matchesAny(splitList(v), name)
+}
+
+// matchesAny reports whether any pattern matches any candidate.
+//
+// A candidate is one of the names the same thing can be written as, so a
+// pattern only has to name it one way. An unparseable pattern matches nothing
+// rather than everything, since a typo suppressing all monitoring is the worse
+// failure.
+func matchesAny(patterns []string, candidates ...string) bool {
+	for _, pattern := range patterns {
+		for _, candidate := range candidates {
+			if candidate == "" {
+				continue
+			}
+			if matched, err := path.Match(pattern, candidate); err == nil && matched {
+				return true
+			}
 		}
 	}
 	return false
