@@ -106,6 +106,7 @@ Every annotation is prefixed `gatus.kalexlab.xyz/`.
 | ---------------- | ------------------------------------ | ---------------------------------------------------------- |
 | `enabled`        | Service, IngressRoute                | `true` opts in, `false` opts out                           |
 | `exclude`        | Service, IngressRoute                | Name globs; an object naming itself opts out               |
+| `exclude-route`  | IngressRoute                         | Address globs; suppresses single rules of one route        |
 | `traefik-service`| IngressRouteTCP                      | `namespace/name`; picks which Traefik publishes it          |
 | `name`           | Service, IngressRoute                | Endpoint name. Default: sentence-cased object name         |
 | `group`          | Service, IngressRoute, **Namespace** | Group. Empty string means _no_ group                       |
@@ -158,6 +159,35 @@ nothing rather than everything.
 
 Exclusion beats `enabled`: the annotation that turned the family on is the one
 every member inherited, so overriding it per object is the whole point.
+
+### Excluding single rules of a route
+
+`exclude` matches the object's name, so it drops every rule at once. One route
+routinely serves addresses that are not all worth checking — a path a client
+authenticates against differently, a hostname handled elsewhere.
+`exclude-route` names **addresses** instead, and only the rules matching them
+are dropped.
+
+```yaml
+gatus.kalexlab.xyz/enabled: "true"
+gatus.kalexlab.xyz/exclude-route: /rest/
+```
+
+An entry matches a rule by its path, by a hostname it serves, or by the two
+joined — `/rest/` covers that path on every host, `music.example.com` covers
+every rule serving that name, `music.example.com/rest/` exactly one address. An
+entry naming a backend Service, as `helper` or `media/helper`, drops the
+in-cluster check while leaving the public address it sits behind monitored.
+
+A rule with no address left to check contributes nothing, its backend included
+— unless another rule forwards to that same backend, which keeps it. The result
+is the configuration the object would have produced had the rule never been
+written, so the surviving endpoints are named as if it never existed: dropping
+one of two hostnames drops the hostname from the other's name too, which resets
+its history in Gatus.
+
+Entries are the same `path.Match` globs `exclude` uses. `*` does not cross a
+`/`, so it spans a hostname label but not a path segment.
 
 ### Several endpoints from one Service
 

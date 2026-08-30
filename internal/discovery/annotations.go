@@ -18,6 +18,7 @@ const AnnotationPrefix = "gatus.kalexlab.xyz/"
 const (
 	AnnEnabled        = "enabled"
 	AnnExclude        = "exclude"
+	AnnExcludeRoute   = "exclude-route"
 	AnnTraefikService = "traefik-service"
 	AnnName           = "name"
 	AnnGroup          = "group"
@@ -81,6 +82,7 @@ var controlKeys = map[string]bool{
 	AnnTemplateExtra:  true,
 	AnnEnabled:        true,
 	AnnExclude:        true,
+	AnnExcludeRoute:   true,
 	AnnTraefikService: true,
 }
 
