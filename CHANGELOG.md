@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.5.3...v0.6.0) (2026-08-30)
+
+
+### Features
+
+* add exclude-route to suppress single rules of an IngressRoute ([e68763b](https://github.com/AlessandroZanatta/gatus-sidecar/commit/e68763b80a1b02023a1110d26333d2984c5336cd))
+* add exclude-route to suppress single rules of an IngressRoute ([375b75c](https://github.com/AlessandroZanatta/gatus-sidecar/commit/375b75cbe478059044706ce376d581a49a688d7d))
+
 ## [0.5.3](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.5.2...v0.5.3) (2026-08-17)
 
 
