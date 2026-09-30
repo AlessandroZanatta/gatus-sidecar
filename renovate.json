@@ -18,10 +18,10 @@
 	"internalChecksFilter": "strict",
 	"timezone": "Europe/Rome",
 	"schedule": ["before 6am on monday"],
-	"prConcurrentLimit": 5,
+	"prConcurrentLimit": 10,
 	"packageRules": [
 		{
-			"description": "Every non-major update merges itself once CI is green, the Go toolchain and controller-runtime included. CI runs the unit suite and the full e2e suite against a real cluster, so a green run is real evidence the update is safe. platformAutomerge is off because main has no required checks: GitHub's native auto-merge would merge before CI finishes, while Renovate waits for every check to pass.",
+			"description": "Every non-major update merges itself once CI is green, the Go toolchain included. CI runs the unit suite and the full e2e suite against a real cluster, so a green run is real evidence the update is safe. platformAutomerge is off because main has no required checks: GitHub's native auto-merge would merge before CI finishes, while Renovate waits for every check to pass.",
 			"matchUpdateTypes": ["minor", "patch", "digest", "pin"],
 			"automerge": true,
 			"automergeType": "pr",
@@ -50,6 +50,12 @@
 			"automerge": false
 		},
 		{
+			"description": "A controller-tools bump changes the generated CRD, which Renovate cannot regenerate. Its own pull request, so the failure blocks nothing else; regenerate with 'make manifests' and push to the branch.",
+			"matchPackageNames": ["sigs.k8s.io/controller-tools"],
+			"groupName": "controller-tools",
+			"automerge": false
+		},
+		{
 			"description": "Majors open a pull request straight away but never merge themselves.",
 			"matchUpdateTypes": ["major"],
 			"automerge": false,
@@ -67,6 +73,6 @@
 	"lockFileMaintenance": {
 		"enabled": true,
 		"automerge": true,
-		"schedule": ["before 6am on the first day of the month"]
+		"schedule": ["before 6am on monday"]
 	}
 }
