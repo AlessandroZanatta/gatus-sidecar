@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.1...v0.6.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* keep external endpoints when a backend cannot be resolved ([f08fccd](https://github.com/AlessandroZanatta/gatus-sidecar/commit/f08fccd951a0aab56bc06d6adf5c51a4e9810092))
+
 ## [0.6.1](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.0...v0.6.1) (2026-09-09)
 
 
