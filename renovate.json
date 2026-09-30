@@ -21,11 +21,11 @@
 	"prConcurrentLimit": 5,
 	"packageRules": [
 		{
-			"description": "Non-major updates merge themselves once CI is green. CI runs the unit suite and the full e2e suite against a real cluster, so a green run is real evidence the update is safe.",
+			"description": "Every non-major update merges itself once CI is green, the Go toolchain and controller-runtime included. CI runs the unit suite and the full e2e suite against a real cluster, so a green run is real evidence the update is safe. platformAutomerge is off because main has no required checks: GitHub's native auto-merge would merge before CI finishes, while Renovate waits for every check to pass.",
 			"matchUpdateTypes": ["minor", "patch", "digest", "pin"],
 			"automerge": true,
 			"automergeType": "pr",
-			"platformAutomerge": true
+			"platformAutomerge": false
 		},
 		{
 			"description": "Everything non-major in one pull request, so a quiet week costs one CI run rather than a dozen.",
@@ -40,33 +40,20 @@
 			"groupName": "github actions"
 		},
 		{
-			"description": "A Go toolchain bump changes what the release image is built with. Worth a human looking at it.",
-			"matchManagers": ["gomod"],
-			"matchDepTypes": ["golang"],
+			"description": "controller-runtime minors move to a new Kubernetes minor, which the e2e suite cannot vouch for: it runs whatever version kind ships, not the cluster's. They get their own pull request, merged by hand, so the rest of the Go modules keep merging themselves. Patches still automerge.",
+			"matchPackageNames": ["sigs.k8s.io/controller-runtime", "k8s.io/**"],
+			"groupName": "kubernetes"
+		},
+		{
+			"matchPackageNames": ["sigs.k8s.io/controller-runtime", "k8s.io/**"],
+			"matchUpdateTypes": ["minor"],
 			"automerge": false
 		},
 		{
-			"description": "Majors never merge themselves, and stay off the pull request list until approved on the dependency dashboard.",
+			"description": "Majors open a pull request straight away but never merge themselves.",
 			"matchUpdateTypes": ["major"],
 			"automerge": false,
-			"dependencyDashboardApproval": true,
 			"labels": ["dependencies", "major"]
-		},
-		{
-			"description": "controller-runtime tracks Kubernetes minor versions and its minor releases carry breaking API changes, so it is treated like a major.",
-			"matchPackageNames": [
-				"sigs.k8s.io/controller-runtime",
-				"sigs.k8s.io/controller-tools"
-			],
-			"matchUpdateTypes": ["minor", "major"],
-			"automerge": false,
-			"dependencyDashboardApproval": true
-		},
-		{
-			"description": "Traefik is imported only for its rule parser, but the vendored CRD in test/e2e/testdata and TRAEFIK_VERSION in the Makefile are pinned separately and have to be refreshed by hand with 'make update-traefik-crd'.",
-			"matchPackageNames": ["github.com/traefik/traefik/v3"],
-			"automerge": false,
-			"dependencyDashboardApproval": true
 		}
 	],
 	"vulnerabilityAlerts": {
