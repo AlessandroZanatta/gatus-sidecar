@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -555,6 +556,8 @@ func TestFromIngressRouteErrors(t *testing.T) {
 		manifest string
 		resolver ServiceResolver
 		wantErr  string
+		// wantKept are the endpoints still returned alongside the error.
+		wantKept []string
 	}{
 		{
 			name: "unparseable match rule",
@@ -594,6 +597,56 @@ spec:
 `,
 			resolver: staticResolver(nil),
 			wantErr:  "resolve backend service",
+			wantKept: []string{"Web (external)"},
+		},
+		{
+			name: "backend port name does not exist",
+			manifest: `
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: web
+  namespace: ns
+  annotations:
+    gatus.kalexlab.xyz/enabled: "true"
+spec:
+  routes:
+    - match: Host(` + "`x.example.org`" + `)
+      services:
+        - name: web
+          port: http
+`,
+			resolver: staticResolver(map[string][]NamedPort{"ns/web": {{Name: "web", Port: 80}}}),
+			wantErr:  `no port named "http"`,
+			wantKept: []string{"Web (external)"},
+		},
+		{
+			name: "one of several backends is broken",
+			manifest: `
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: web
+  namespace: ns
+  annotations:
+    gatus.kalexlab.xyz/enabled: "true"
+spec:
+  routes:
+    - match: Host(` + "`x.example.org`" + `) && PathPrefix(` + "`/api`" + `)
+      services:
+        - name: api
+          port: http
+    - match: Host(` + "`x.example.org`" + `)
+      services:
+        - name: ui
+          port: 80
+`,
+			resolver: staticResolver(map[string][]NamedPort{
+				"ns/api": {{Name: "web", Port: 3000}},
+				"ns/ui":  {{Port: 80}},
+			}),
+			wantErr:  "backend service ns/api",
+			wantKept: []string{"Web /api (external)", "Web (external)", "Ui"},
 		},
 		{
 			name: "backend port cannot be inferred",
@@ -613,17 +666,23 @@ spec:
 `,
 			resolver: staticResolver(map[string][]NamedPort{"ns/web": {{Name: "a", Port: 1}, {Name: "b", Port: 2}}}),
 			wantErr:  "pick one with the port annotation",
+			wantKept: []string{"Web (external)"},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Defaults().FromIngressRoute(route(t, tc.manifest), "", tc.resolver)
+			got, err := Defaults().FromIngressRoute(route(t, tc.manifest), "", tc.resolver)
 			if err == nil {
 				t.Fatal("FromIngressRoute() = nil error, want a failure")
 			}
 			if !strings.Contains(err.Error(), tc.wantErr) {
 				t.Errorf("error = %q, want it to contain %q", err, tc.wantErr)
+			}
+			// A broken backend must not take the public address down with it:
+			// checking that address is how the breakage gets noticed.
+			if !slices.Equal(names(got), tc.wantKept) {
+				t.Errorf("kept %v, want %v", names(got), tc.wantKept)
 			}
 		})
 	}

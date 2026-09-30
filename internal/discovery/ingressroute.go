@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -59,6 +60,10 @@ type backendRef struct {
 // route forwards to. The external one exercises DNS, TLS, the ingress proxy and
 // any middleware; the internal one isolates the workload itself. When they
 // disagree, the difference is the useful signal.
+//
+// A backend that cannot be resolved costs only its own in-cluster endpoint: the
+// error is returned alongside every endpoint that could still be derived, since
+// the external check is exactly what notices a route pointing nowhere.
 func (o Options) FromIngressRoute(obj *unstructured.Unstructured, nsGroup string, resolve ServiceResolver) ([]config.Endpoint, error) {
 	if !enabled(o.IngressRouteMode, obj.GetAnnotations()) {
 		return nil, nil
@@ -101,10 +106,7 @@ func (o Options) FromIngressRoute(obj *unstructured.Unstructured, nsGroup string
 	out = append(out, o.externalEndpoints(base, ctx, hosts)...)
 
 	internal, err := o.internalEndpoints(base, ctx, backends, resolve)
-	if err != nil {
-		return nil, err
-	}
-	return append(out, internal...), nil
+	return append(out, internal...), err
 }
 
 // hostTarget is one externally reachable address from a route's match rule.
@@ -281,15 +283,20 @@ func (o Options) externalEndpoints(base spec, ctx specContext, hosts []hostTarge
 }
 
 // internalEndpoints builds the in-cluster endpoints for a route's backends.
+//
+// A backend that cannot be resolved is skipped and its error collected, so one
+// bad backend does not take the others down with it.
 func (o Options) internalEndpoints(base spec, ctx specContext, backends []backendRef, resolve ServiceResolver) ([]config.Endpoint, error) {
 	out := make([]config.Endpoint, 0, len(backends))
+	var errs []error
 
 	for _, b := range backends {
 		var ports []NamedPort
 		if resolve != nil {
 			var err error
 			if ports, err = resolve(b.namespace, b.name); err != nil {
-				return nil, fmt.Errorf("resolve backend service %s/%s: %w", b.namespace, b.name, err)
+				errs = append(errs, fmt.Errorf("resolve backend service %s/%s: %w", b.namespace, b.name, err))
+				continue
 			}
 		}
 
@@ -299,7 +306,8 @@ func (o Options) internalEndpoints(base spec, ctx specContext, backends []backen
 		}
 		port, err := resolvePort(want, ports)
 		if err != nil {
-			return nil, fmt.Errorf("backend service %s/%s: %w", b.namespace, b.name, err)
+			errs = append(errs, fmt.Errorf("backend service %s/%s: %w", b.namespace, b.name, err))
+			continue
 		}
 
 		// An explicit path annotation wins; otherwise the route's own prefix is
@@ -317,7 +325,7 @@ func (o Options) internalEndpoints(base spec, ctx specContext, backends []backen
 		out = append(out, ep)
 	}
 
-	return out, nil
+	return out, errors.Join(errs...)
 }
 
 // baseEndpoint fills in the parts of an endpoint that do not depend on which

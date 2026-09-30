@@ -92,10 +92,7 @@ func (o Options) FromIngressRouteTCP(
 	internalBase := base
 	internalBase.scheme = "tcp"
 	internal, err := o.internalEndpoints(internalBase, ctx, backends, resolve)
-	if err != nil {
-		return nil, err
-	}
-	return append(out, internal...), nil
+	return append(out, internal...), err
 }
 
 // externalTCPEndpoints builds one endpoint per host and entrypoint.

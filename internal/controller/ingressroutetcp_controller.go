@@ -84,10 +84,14 @@ func (r *IngressRouteTCPReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	endpoints, err := r.Options.FromIngressRouteTCP(route, nsGroup, r.resolveService(ctx), ports)
-	if err != nil {
+	// A malformed rule or a missing backend is the author's mistake, not a
+	// transient failure, so requeueing would spin. Say why, and keep whatever
+	// could still be derived: a route whose backend is broken still has a public
+	// address, and checking it is how the breakage gets noticed.
+	if err != nil && len(endpoints) == 0 {
 		log.Error(err, "ignoring IngressRouteTCP: it could not be turned into endpoints")
-		r.Registry.Delete(key)
-		return ctrl.Result{}, nil
+	} else if err != nil {
+		log.Error(err, "IngressRouteTCP only partly turned into endpoints; monitoring the rest")
 	}
 
 	if r.Registry.Set(key, endpoints) {
