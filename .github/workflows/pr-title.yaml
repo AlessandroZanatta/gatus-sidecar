@@ -10,9 +10,9 @@ on:
 permissions:
   pull-requests: read
 
-concurrency:
-  group: pr-title-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+# No concurrency group: a Renovate push fires synchronize and edited together,
+# and a cancelled run leaves a check Renovate reads as pending, so it never
+# automerges. Both runs check the same title anyway.
 
 jobs:
   lint:
