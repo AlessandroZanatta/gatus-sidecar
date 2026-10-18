@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.3...v0.6.4) (2026-10-18)
+
+
+### Dependencies
+
+* update kubernetes ([49c700a](https://github.com/AlessandroZanatta/gatus-sidecar/commit/49c700a35252132622e5422ee56d848f53b26c56))
+
 ## [0.6.3](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.2...v0.6.3) (2026-10-01)
 
 
