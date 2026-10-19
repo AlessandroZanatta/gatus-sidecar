@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.4...v0.6.5) (2026-10-19)
+
+
+### Dependencies
+
+* update go modules ([#38](https://github.com/AlessandroZanatta/gatus-sidecar/issues/38)) ([aee7981](https://github.com/AlessandroZanatta/gatus-sidecar/commit/aee79816f5f4392ad025239eaa98d15010cf3fc9))
+
 ## [0.6.4](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.3...v0.6.4) (2026-10-18)
 
 
