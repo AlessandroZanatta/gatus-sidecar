@@ -80,12 +80,13 @@
 			automerge: false,
 		},
 		{
-			// A controller-tools bump changes the generated CRD, which Renovate cannot
-			// regenerate. Its own pull request, so the failure blocks nothing else;
-			// regenerate with 'make manifests' and push to the branch.
+			// The CRD omits the controller-gen version, so most controller-tools bumps
+			// leave it untouched and merge themselves. One that changes the schema
+			// fails verify-generated, which Renovate cannot fix. Its own pull request,
+			// so the failure blocks nothing else; regenerate with 'make manifests' and
+			// push to the branch.
 			matchPackageNames: ['sigs.k8s.io/controller-tools'],
 			groupName: 'controller-tools',
-			automerge: false,
 		},
 		{
 			// Majors open a pull request straight away but never merge themselves.

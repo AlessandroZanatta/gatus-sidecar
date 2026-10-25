@@ -37,7 +37,7 @@ generate: ## Generate deepcopy methods.
 
 .PHONY: manifests
 manifests: ## Generate CRD and RBAC manifests.
-	$(CONTROLLER_GEN) crd paths=./api/... output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) crd:omitToolVersion=true paths=./api/... output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=gatus-sidecar paths=./internal/... output:rbac:artifacts:config=deploy/rbac
 
 .PHONY: verify-generated
