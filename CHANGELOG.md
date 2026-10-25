@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.6](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.5...v0.6.6) (2026-10-25)
+
+
+### Build
+
+* automerge controller-tools bumps ([7ea4054](https://github.com/AlessandroZanatta/gatus-sidecar/commit/7ea405412b4353fa8efffb0d8e23d025007dd0b6))
+
 ## [0.6.5](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.4...v0.6.5) (2026-10-19)
 
 
