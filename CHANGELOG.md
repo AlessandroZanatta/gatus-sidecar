@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.7](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.6...v0.6.7) (2026-10-26)
+
+
+### Dependencies
+
+* update module github.com/traefik/traefik/v3 to v3.7.15 ([#41](https://github.com/AlessandroZanatta/gatus-sidecar/issues/41)) ([bcdc38d](https://github.com/AlessandroZanatta/gatus-sidecar/commit/bcdc38de13b6e40400ad1540a29cfcd3279c673c))
+
 ## [0.6.6](https://github.com/AlessandroZanatta/gatus-sidecar/compare/v0.6.5...v0.6.6) (2026-10-25)
 
 
