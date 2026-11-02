@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	github.com/prometheus/client_golang v1.25.0
-	github.com/traefik/traefik/v3 v3.7.15
+	github.com/traefik/traefik/v3 v3.7.16
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.37.1
 	k8s.io/apiextensions-apiserver v0.37.1
