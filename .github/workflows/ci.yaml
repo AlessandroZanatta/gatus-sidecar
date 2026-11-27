@@ -3,7 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+  # The release pull request touches only these two files, and the release
+  # workflow merges it seconds after opening it. A run started for it would find
+  # the pull request already merged and its branch deleted, and fail without
+  # running a job. Nothing in these files needs CI anyway.
   pull_request:
+    paths-ignore:
+      - CHANGELOG.md
+      - .release-please-manifest.json
   workflow_dispatch:
 
 permissions:
