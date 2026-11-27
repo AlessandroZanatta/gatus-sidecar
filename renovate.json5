@@ -5,6 +5,11 @@
 		':dependencyDashboard',
 		':semanticCommits',
 		':assignee(AlessandroZanatta)',
+		// Pins each action's digest comment to an exact version (# v7.1.2, not
+		// # v7). The major tag moves on every release, which makes each update a
+		// digest bump with no timestamp. An exact tag doesn't move, so updates
+		// become versioned and the release age check works.
+		'helpers:pinGitHubActionDigestsToSemver',
 	],
 
 	// release-please derives the version and changelog from commit messages, so
@@ -65,6 +70,17 @@
 			matchManagers: ['github-actions'],
 			matchUpdateTypes: ['minor', 'patch', 'digest'],
 			groupName: 'github actions',
+		},
+		{
+			// A digest bump has no release timestamp, so the release age can never be
+			// met and the stability check stays pending forever. Actions avoid this
+			// through helpers:pinGitHubActionDigestsToSemver above: pinned to an exact
+			// version, they get version updates, which carry a timestamp. What is left
+			// is an image rebuilt under the same tag. Its age cannot be checked, so it
+			// is merged by hand instead of let through unchecked.
+			matchUpdateTypes: ['digest'],
+			minimumReleaseAgeBehaviour: 'timestamp-optional',
+			automerge: false,
 		},
 		{
 			// controller-runtime minors move to a new Kubernetes minor, which the e2e
